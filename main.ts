@@ -1,8 +1,7 @@
 import { Base } from "./classes/Base";
-import { BaseRequirements } from "./classes/BaseRequirements";
 
 function main() {
-    const baseRequirements: BaseRequirements = {
+    const baseRequirements = {
         roomRequirements: [
             {
                 name: 'storage-0',
@@ -36,10 +35,45 @@ function main() {
                 name: 'bedroom-4',
                 size: 1,
             },
+        ],
+        spaceAvailable: [
+            [
+                {
+                    usable: true,
+                },
+                {
+                    usable: true,
+                },
+                {
+                    usable: true,
+                },
+            ],
+            [
+                {
+                    usable: true,
+                },
+                {
+                    usable: true,
+                },
+                {
+                    usable: true,
+                },
+            ],
+            [
+                {
+                    usable: true,
+                },
+                {
+                    usable: true,
+                },
+                {
+                    usable: true,
+                },
+            ],
         ]
     };
     const base = new Base(baseRequirements);
-    const baseLayout = base.getLayout();
+    const baseLayout = base.getBaseLayout();
 
     console.log(JSON.stringify(baseLayout, null, 4));
 }
