@@ -1,16 +1,16 @@
 import {
   Base,
-  BaseRequirements,
+  BaseOptions,
   NotEnoughSpaceError
 } from './Base';
 
 describe('Base', () => {
 
-  let baseRequirements: BaseRequirements;
+  let baseOptions: BaseOptions;
 
   beforeEach(() => {
-    baseRequirements = {
-      roomRequirements: [
+    baseOptions = {
+      rooms: [
         {
           name: 'storage-0',
           size: 2,
@@ -24,7 +24,7 @@ describe('Base', () => {
           size: 1,
         },
       ],
-      spaceAvailable: [
+      cells: [
         [
           {
             usable: true,
@@ -43,22 +43,21 @@ describe('Base', () => {
         ],
       ]
     };
-  })
+  });
 
   test('constructor works', () => {
-    const base = new Base(baseRequirements);
-    expect(base.getBaseRequirements()).toMatchObject(baseRequirements);
+    expect(new Base(baseOptions)).toBeDefined();
   });
 
   test('constructor errors if there is not enough space available', () => {
-    baseRequirements = {
-      roomRequirements: [
+    baseOptions = {
+      rooms: [
         {
           name: 'storage-0',
           size: 2,
         },
       ],
-      spaceAvailable: [
+      cells: [
         [
           {
             usable: true,
@@ -66,18 +65,18 @@ describe('Base', () => {
         ]
       ]
     };
-    expect(() => new Base(baseRequirements)).toThrow(NotEnoughSpaceError);
+    expect(() => new Base(baseOptions)).toThrow(NotEnoughSpaceError);
   });
 
-  test('getBaseLayout works for 1x1 base', () => {
-    baseRequirements = {
-      roomRequirements: [
+  test('Cell naming works for 1x1 base', () => {
+    baseOptions = {
+      rooms: [
         {
           name: 'storage-0',
           size: 1,
         },
       ],
-      spaceAvailable: [
+      cells: [
         [
           {
             usable: true,
@@ -85,27 +84,25 @@ describe('Base', () => {
         ]
       ]
     };
-    const base = new Base(baseRequirements);
-    expect(base.getBaseLayout()).toMatchObject({
-      baseLayout: [
-        [
-          {
-            roomName: 'storage-0'
-          }
-        ]
+    const base = new Base(baseOptions);
+    expect(base.getBaseLayout()).toMatchObject([
+      [
+        {
+          roomName: 'storage-0'
+        }
       ]
-    });
+    ]);
   });
 
-  test('getBaseLayout works for 1x1 base if not all cells are used', () => {
-    baseRequirements = {
-      roomRequirements: [
+  test('Cell naming works for 1x1 base if not all cells are used', () => {
+    baseOptions = {
+      rooms: [
         {
           name: 'storage-0',
           size: 0,
         },
       ],
-      spaceAvailable: [
+      cells: [
         [
           {
             usable: true,
@@ -113,21 +110,19 @@ describe('Base', () => {
         ]
       ]
     };
-    const base = new Base(baseRequirements);
-    expect(base.getBaseLayout()).toMatchObject({
-      baseLayout: [
-        [
-          {
-            used: false
-          }
-        ]
+    const base = new Base(baseOptions);
+    expect(base.getBaseLayout()).toMatchObject([
+      [
+        {
+          used: false
+        }
       ]
-    });
+    ]);
   });
 
-  test('_getBaseLayoutNaive works for 3x1 base with multiple rooms', () => {
-    baseRequirements = {
-      roomRequirements: [
+  test('Cell naming works for 3x1 base with multiple rooms', () => {
+    baseOptions = {
+      rooms: [
         {
           name: 'storage-0',
           size: 1,
@@ -141,7 +136,7 @@ describe('Base', () => {
           size: 2,
         },
       ],
-      spaceAvailable: [
+      cells: [
         [
           {
             usable: true,
@@ -159,34 +154,32 @@ describe('Base', () => {
         ]
       ]
     };
-    const base = new Base(baseRequirements);
-    expect(base.getBaseLayout()).toMatchObject({
-      baseLayout: [
-        [
-          {
-            roomName: 'storage-0',
-            used: true,
-          }
-        ],
-        [
-          {
-            roomName: 'kitchen-0',
-            used: true,
-          }
-        ],
-        [
-          {
-            roomName: 'kitchen-0',
-            used: true,
-          }
-        ],
-      ]
-    });
+    const base = new Base(baseOptions);
+    expect(base.getBaseLayout()).toMatchObject([
+      [
+        {
+          roomName: 'storage-0',
+          used: true,
+        }
+      ],
+      [
+        {
+          roomName: 'kitchen-0',
+          used: true,
+        }
+      ],
+      [
+        {
+          roomName: 'kitchen-0',
+          used: true,
+        }
+      ],
+    ]);
   });
 
-  test('_getBaseLayoutNaive works when some cells are not usable', () => {
-    baseRequirements = {
-      roomRequirements: [
+  test('Cell naming works when some cells are not usable', () => {
+    baseOptions = {
+      rooms: [
         {
           name: 'storage-0',
           size: 1,
@@ -196,7 +189,7 @@ describe('Base', () => {
           size: 1,
         },
       ],
-      spaceAvailable: [
+      cells: [
         [
           {
             usable: true,
@@ -214,28 +207,59 @@ describe('Base', () => {
         ]
       ]
     };
-    const base = new Base(baseRequirements);
-    expect(base.getBaseLayout()).toMatchObject({
-      baseLayout: [
+    const base = new Base(baseOptions);
+    expect(base.getBaseLayout()).toMatchObject([
+      [
+        {
+          roomName: 'storage-0',
+          used: true,
+        }
+      ],
+      [
+        {
+          used: false,
+        }
+      ],
+      [
+        {
+          roomName: 'kitchen-0',
+          used: true,
+        }
+      ],
+    ]);
+  });
+
+  test('Can get distance to nearest cell by name', () => {
+    baseOptions = {
+      rooms: [
+        {
+          name: 'storage-0',
+          size: 2,
+        },
+      ],
+      cells: [
         [
           {
-            roomName: 'storage-0',
-            used: true,
+            usable: true,
           }
         ],
         [
           {
-            used: false,
+            usable: false,
           }
         ],
         [
           {
-            roomName: 'kitchen-0',
-            used: true,
+            usable: true,
           }
-        ],
+        ]
       ]
-    });
+    };
+    const base = new Base(baseOptions);
+    const baseLayout = base.getBaseLayout();
+    expect(baseLayout[0][0].roomName).toBe('storage-0');
+    const distanceToNearest = baseLayout[0][0].getDistanceToNearest((cell) => cell.roomName === 'storage-0');
+    expect(distanceToNearest).toBe(2);
   });
 
 });
