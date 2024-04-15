@@ -38,67 +38,32 @@ export class Base {
     return this.matrix;
   }
 
-  // _getEnergy(): number {
-  // Compute the energy of cells of the same room name.
-  // Convert the space grid to an adjacency list.
-  // const adjacencyList = {}[]
-  // const roomCells: { [index: string]: { i: number, j: number }[] } = {};
-  // for (const [i, row] of Object.entries(this.baseLayout)) {
-  //   for (const [j, cell] of Object.entries(row)) {
-  //     if (!cell.roomName) {
-  //       continue;
-  //     }
-  //     if (!(cell.roomName in roomCells)) {
-  //       roomCells[cell.roomName] = [];
-  //     }
-  //     roomCells[cell.roomName].push()
-  //   }
-  // }
-  // this.baseLayout.forEach((cell) => {
-  //   if (room.size == 0) {
-  //     return {
-  //       roomName: room.name,
-  //       indices: [],
-  //     };
-  //   }
-  // const intraRoomEnergy = Object.entries(this.baseLayout).map(([i, row]) => {
-  //   return Object.entries(row).map(([j, cell]) => {
-  //     if (!cell.usable) {
-  //       return 0;
-  //     }
-  //     if (!cell.used) {
-  //       return 0;
-  //     }
+  _getEnergy(): number {
+    // Compute the energy of cells of the same room name.
+    const cells = this.matrix.flat();
+    const intraRoomEnergy = cells
+      .map((cell) => {
+        if (!cell.roomName) {
+          return 0;
+        }
+        const room = this.rooms.find((room) => room.name === cell.roomName);
+        if (room === undefined) {
+          throw new Error(`A cell with roomName ${cell.roomName} is in the matrix, but somehow not in the room list.`);
+        }
+        if (room.size <= 1) {
+          return 0;
+        }
+        const distance = cell.getDistanceToNearest((neighbor) => neighbor.roomName === cell.roomName);
+        const energy = Math.pow(distance, 2);
+        return energy;
+      })
+      .reduce((sum, energy) => sum + energy);
 
-  //     const roomRequirement = this.options.rooms.find((room) => room.name === cell.roomName);
-  //     if (!roomRequirement) {
-  //       throw new Error(`Room ${cell.roomName} has a cell allocated to it, but it does not exist in the list of required room.`);
-  //     }
-  //     if (roomRequirement.size <= 1) {
-  //       return 0;
-  //     }
+      // TODO: Compute energy of links between rooms.
+      const interRoomEnergy = 0;
 
-  //     // Use breadth-first-search to find the nearest space of the same room name.
-  //     const queue = [];
-
-
-
-  //     const exploredSpaces = [];
-  //     const distance = 0;
-
-
-  //     const energy = Math.pow(distance, 2);
-  //     return energy;
-  //   })
-  //     .flat()
-  //     .reduce((sum, roomEnergy: number) => sum + roomEnergy, 0);
-
-
-  //   // TODO: Compute energy of links between rooms.
-  //   const interRoomEnergy = 0;
-
-  //   return intraRoomEnergy + interRoomEnergy;
-  // }
+      return intraRoomEnergy + interRoomEnergy;
+  }
 
   private buildMatrix(rooms: Room[], cells: { usable: boolean }[][]): Cell[][] {
     const roomNameList = [];
