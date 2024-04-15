@@ -1,6 +1,7 @@
 import { Cell } from './Cell'
 
 export type Room = {
+  links: { name: string }[];
   name: string;
   size: number;
 }
@@ -21,15 +22,11 @@ export class Base {
   private rooms: Room[];
   private matrix: Cell[][];
   constructor(options: BaseOptions) {
-    const cellsAvailable = options.cells
-      .flat()
-      .filter((cell) => cell.usable)
-      .length;
-    const cellsNeeded = options.rooms
-      .reduce((sum, room) => sum + room.size, 0);
-    if (cellsAvailable < cellsNeeded) {
-      throw new NotEnoughSpaceError(cellsAvailable, cellsNeeded);
-    }
+    this._validateRoomSizes(options.rooms);
+    this._validateSpaceAvailable(options.rooms, options.cells);
+    this._validateRoomUniqueness(options.rooms);
+    this._validateLinkReciprocity(options.rooms);
+
     this.rooms = options.rooms;
     this.matrix = this.buildMatrix(options.rooms, options.cells);
   }
@@ -59,10 +56,10 @@ export class Base {
       })
       .reduce((sum, energy) => sum + energy);
 
-      // TODO: Compute energy of links between rooms.
-      const interRoomEnergy = 0;
+    // TODO: Compute energy of links between rooms.
+    const interRoomEnergy = 0;
 
-      return intraRoomEnergy + interRoomEnergy;
+    return intraRoomEnergy + interRoomEnergy;
   }
 
   private buildMatrix(rooms: Room[], cells: { usable: boolean }[][]): Cell[][] {
@@ -118,6 +115,51 @@ export class Base {
       }
     }
     return matrix;
+  }
+
+  _validateRoomSizes(rooms: Room[]) {
+    for (const room of rooms) {
+      if (room.size < 1) {
+        throw new Error(`Room with name '${room.name}' has room size '${room.size}', but the minimum room size is 1.`);
+      }
+    }
+  }
+
+  _validateRoomUniqueness(rooms: Room[]) {
+    const uniqueRoomNames = new Set();
+    for (const room of rooms) {
+      if (uniqueRoomNames.has(room.name)) {
+        throw new Error(`Multiple rooms have the name '${room.name}'.`);
+      }
+      uniqueRoomNames.add(room.name);
+    }
+  }
+
+  _validateLinkReciprocity(rooms: Room[]) {
+    for (const room of rooms) {
+      for (const link of room.links) {
+        const linkedRoom = rooms.find((room) => room.name === link.name);
+        if (linkedRoom === undefined) {
+          throw new Error(`Room with name '${room.name}' has a link to a room with name '${link.name}', but there is no such room.`);
+        }
+        const reciprocalLink = linkedRoom.links.find((link) => link.name === room.name);
+        if (reciprocalLink === undefined) {
+          throw new Error(`Room with name '${room.name}' has a link to room with name ${linkedRoom.name}, but room with name '${linkedRoom.name}' does not have a link back to room with name '${room.name}'.`);
+        }
+      }
+    }
+  }
+
+  _validateSpaceAvailable(rooms: Room[], cells: { usable: boolean }[][]) {
+    const cellsAvailable = cells
+      .flat()
+      .filter((cell) => cell.usable)
+      .length;
+    const cellsNeeded = rooms
+      .reduce((sum, room) => sum + room.size, 0);
+    if (cellsAvailable < cellsNeeded) {
+      throw new NotEnoughSpaceError(cellsAvailable, cellsNeeded);
+    }
   }
 
 }

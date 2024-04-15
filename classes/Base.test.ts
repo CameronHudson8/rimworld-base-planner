@@ -12,14 +12,25 @@ describe('Base', () => {
     baseOptions = {
       rooms: [
         {
+          links: [
+            {
+              name: 'kitchen-0'
+            }
+          ],
           name: 'storage-0',
           size: 2,
         },
         {
+          links: [
+            {
+              name: 'storage-0'
+            }
+          ],
           name: 'kitchen-0',
           size: 1,
         },
         {
+          links: [],
           name: 'bedroom-0',
           size: 1,
         },
@@ -53,6 +64,7 @@ describe('Base', () => {
     baseOptions = {
       rooms: [
         {
+          links: [],
           name: 'storage-0',
           size: 2,
         },
@@ -72,6 +84,7 @@ describe('Base', () => {
     baseOptions = {
       rooms: [
         {
+          links: [],
           name: 'storage-0',
           size: 1,
         },
@@ -98,11 +111,17 @@ describe('Base', () => {
     baseOptions = {
       rooms: [
         {
+          links: [],
           name: 'storage-0',
-          size: 0,
+          size: 1,
         },
       ],
       cells: [
+        [
+          {
+            usable: true,
+          }
+        ],
         [
           {
             usable: true,
@@ -112,6 +131,11 @@ describe('Base', () => {
     };
     const base = new Base(baseOptions);
     expect(base.getBaseLayout()).toMatchObject([
+      [
+        {
+          used: true
+        }
+      ],
       [
         {
           used: false
@@ -124,14 +148,20 @@ describe('Base', () => {
     baseOptions = {
       rooms: [
         {
+          links: [
+            {
+              name: 'kitchen-0'
+            }
+          ],
           name: 'storage-0',
           size: 1,
         },
         {
-          name: 'storage-0',
-          size: 0,
-        },
-        {
+          links: [
+            {
+              name: 'storage-0'
+            }
+          ],
           name: 'kitchen-0',
           size: 2,
         },
@@ -181,10 +211,20 @@ describe('Base', () => {
     baseOptions = {
       rooms: [
         {
+          links: [
+            {
+              name: 'kitchen-0'
+            }
+          ],
           name: 'storage-0',
           size: 1,
         },
         {
+          links: [
+            {
+              name: 'storage-0'
+            }
+          ],
           name: 'kitchen-0',
           size: 1,
         },
@@ -229,10 +269,12 @@ describe('Base', () => {
     ]);
   });
 
+  // TODO Move this to Cell.test.ts.
   test('Can get distance to nearest cell by name', () => {
     baseOptions = {
       rooms: [
         {
+          links: [],
           name: 'storage-0',
           size: 2,
         },
