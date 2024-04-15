@@ -11,6 +11,10 @@ export type BaseOptions = {
   cells: { usable: boolean }[][];
 }
 
+export type BaseLayoutOptimizationOptions = {
+  iterations: number;
+}
+
 export class NotEnoughSpaceError extends Error {
   constructor(cellsAvailable: number, cellsNeeded: number) {
     const message = `${cellsAvailable} cell(s) are available, but ${cellsNeeded} cell(s) are needed.`;
@@ -28,72 +32,59 @@ export class Base {
     this._validateLinkReciprocity(options.rooms);
 
     this.rooms = options.rooms;
-    this.matrix = this.buildMatrix(options.rooms, options.cells);
+    this.matrix = this._buildMatrix(options.rooms, options.cells);
   }
 
   getBaseLayout(): Cell[][] {
     return this.matrix;
   }
 
-  _getEnergy(): number {
-    // Compute the energy of cells of the same room name.
-    const cells = this.matrix.flat();
-    const intraRoomEnergy = cells
-      .map((cell) => {
-        if (!cell.roomName) {
-          return 0;
-        }
-        const room = this.rooms.find((room) => room.name === cell.roomName);
-        if (room === undefined) {
-          throw new Error(`A cell with roomName ${cell.roomName} is in the matrix, but somehow not in the room list.`);
-        }
-        if (room.size <= 1) {
-          return 0;
-        }
-        const distance = cell.getDistanceToNearest((neighbor) => neighbor.roomName === cell.roomName);
-        const energy = Math.pow(distance, 2);
-        return energy;
-      })
-      .reduce((sum, energy) => sum + energy);
+  optimizeBaseLayout({ iterations }: BaseLayoutOptimizationOptions = { iterations: 100 }): Cell[][] {
+    const initialTemperature = 1;
 
-    // TODO: Compute energy of links between rooms.
-    const interRoomEnergy = 0;
+    let currentEnergy = this._getEnergy(this.matrix);
 
-    return intraRoomEnergy + interRoomEnergy;
+    for (let i = 0; i < iterations; i += 1) {
+      // Create a near-clone of based on the existing matrix.
+      const candidateMatrix = this._cloneBaseLayout(this.matrix);
+      // Swap the room assignments of 2 cells in candidateMatrix (ONLY their roomNames).
+      const usableCells = candidateMatrix
+        .flat()
+        .filter((cell) => cell.usable);
+      const cell1 = usableCells[Math.floor(Math.random() * usableCells.length)];
+      const cell2 = usableCells[Math.floor(Math.random() * usableCells.length)];
+      const cell1RoomName = cell1.roomName;
+      const cell1Used = cell1.used;
+      const cell2RoomName = cell2.roomName;
+      const cell2Used = cell2.used;
+      cell2.roomName = cell1RoomName;
+      cell2.used = cell1Used;
+      cell1.roomName = cell2RoomName;
+      cell1.used = cell2Used;
+
+      const candidateEnergy = this._getEnergy(candidateMatrix);
+      const acceptanceProbabilityThreshold = (1 - i / iterations);
+
+      if (candidateEnergy < currentEnergy || Math.random() < acceptanceProbabilityThreshold) {
+        this.matrix = candidateMatrix;
+        console.log(`Energy changed from ${currentEnergy} to ${candidateEnergy}.`);
+        currentEnergy = candidateEnergy;
+      }
+    }
+    
+    return this.matrix;
   }
 
-  private buildMatrix(rooms: Room[], cells: { usable: boolean }[][]): Cell[][] {
-    const roomNameList = [];
-    for (const room of rooms) {
-      for (let i = 0; i < room.size; i += 1) {
-        roomNameList.push(room.name);
-      }
-    }
-    // Create Cells with room names
-    const matrix: Cell[][] = [];
-    for (let i in cells) {
-      matrix.push([]);
-      for (let j in cells[i]) {
-        if (!cells[i][j].usable) {
-          matrix[i].push(new Cell({
-            coordinates: [Number(i), Number(j)],
-            neighbors: [],
-            usable: cells[i][j].usable,
-            used: false,
-          }));
-          continue;
-        }
-        const roomName = roomNameList.shift();
-        matrix[i].push(new Cell({
-          coordinates: [Number(i), Number(j)],
-          neighbors: [],
-          roomName,
-          usable: cells[i][j].usable,
-          used: roomName !== undefined,
-        }));
-      }
-    }
-    // Assign neighbors to Cells
+  _cloneBaseLayout(originalMatrix: Cell[][]): Cell[][] {
+    const matrix = originalMatrix.map((row) => {
+      return row.map((cell) => new Cell({
+        id: cell.id,
+        neighbors: [],
+        roomName: cell.roomName,
+        usable: cell.usable,
+        used: cell.used,
+      }));
+    });
     for (let iStr in matrix) {
       for (let jStr in matrix[iStr]) {
         const i = Number(iStr);
@@ -114,6 +105,85 @@ export class Base {
         matrix[i][j].neighbors = neighbors;
       }
     }
+    return matrix;
+  }
+
+  _getEnergy(matrix: Cell[][]): number {
+    const cells = matrix.flat();
+
+    const intraRoomEnergy = cells
+      .map((cell) => {
+        if (!cell.roomName) {
+          return 0;
+        }
+        const room = this.rooms.find((room) => room.name === cell.roomName);
+        if (room === undefined) {
+          throw new Error(`A cell with roomName ${cell.roomName} is in the matrix, but somehow not in the room list.`);
+        }
+        if (room.size === 1) {
+          const energy = 1;
+          return energy;
+        }
+        const distance = cell.getDistanceToNearest((neighbor) => neighbor.roomName === cell.roomName);
+        const energy = Math.pow(distance, 2) / room.size;
+        return energy;
+      })
+      .reduce((sum, energy) => sum + energy);
+
+    const interRoomEnergy = this.rooms
+      .map((room) => {
+        const cellsInRoom = cells.filter((cell) => cell.roomName === room.name);
+        const roomLinkEnergy = room.links
+          .map((link) => {
+            const minLinkDistance = cellsInRoom
+              .map((cell) => cell.getDistanceToNearest((cell) => cell.roomName === link.name))
+              .reduce((minDistance, distance) => Math.min(minDistance, distance), Infinity);
+            const linkEnergy = Math.pow(minLinkDistance, 2) / 2;
+            return linkEnergy;
+          })
+          .reduce((sum, linkEnergy) => sum + linkEnergy, 0);
+        return roomLinkEnergy;
+      })
+      .reduce((sum, roomLinkEnergy) => sum + roomLinkEnergy, 0);
+
+    return intraRoomEnergy + interRoomEnergy;
+  }
+
+  // _putNeighbors(neighborlessMatrix: Cell[][]): Cell[][] {
+
+  // }
+
+  _buildMatrix(rooms: Room[], cells: { usable: boolean }[][]): Cell[][] {
+    const roomNameList = [];
+    for (const room of rooms) {
+      for (let i = 0; i < room.size; i += 1) {
+        roomNameList.push(room.name);
+      }
+    }
+    // Create Cells with room names
+    const neighborlessMatrix: Cell[][] = [];
+    for (let i in cells) {
+      neighborlessMatrix.push([]);
+      for (let j in cells[i]) {
+        if (!cells[i][j].usable) {
+          neighborlessMatrix[i].push(new Cell({
+            neighbors: [],
+            usable: cells[i][j].usable,
+            used: false,
+          }));
+          continue;
+        }
+        const roomName = roomNameList.shift();
+        neighborlessMatrix[i].push(new Cell({
+          neighbors: [],
+          roomName,
+          usable: cells[i][j].usable,
+          used: roomName !== undefined,
+        }));
+      }
+    }
+
+    const matrix = this._cloneBaseLayout(neighborlessMatrix);
     return matrix;
   }
 

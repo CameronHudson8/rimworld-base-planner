@@ -3,6 +3,7 @@ import {
   BaseOptions,
   NotEnoughSpaceError
 } from './Base';
+import { Cell } from './Cell';
 
 describe('Base', () => {
 
@@ -302,6 +303,14 @@ describe('Base', () => {
     expect(baseLayout[0][0].roomName).toBe('storage-0');
     const distanceToNearest = baseLayout[0][0].getDistanceToNearest((cell) => cell.roomName === 'storage-0');
     expect(distanceToNearest).toBe(2);
+  });
+
+  test('Energy is computed by distance squared', () => {
+    const base = new Base(baseOptions);
+    const intraRoomEnergy = 3;
+    const interRoomEnergy = 1;
+    const energy = intraRoomEnergy + interRoomEnergy;
+    expect(base._getEnergy(base.getBaseLayout())).toBe(energy);
   });
 
 });

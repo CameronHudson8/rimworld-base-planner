@@ -1,5 +1,5 @@
 export type CellOptions = {
-  coordinates: number[];
+  id?: string;
   neighbors: Cell[];
   roomName?: string;
   usable: boolean;
@@ -8,14 +8,12 @@ export type CellOptions = {
 
 export class Cell {
   id: string;
-  coordinates: number[];
   neighbors: Cell[];
   roomName?: string;
   usable: boolean
   used?: boolean;
   constructor(options: CellOptions) {
-    this.coordinates = options.coordinates;
-    this.id = crypto.randomUUID();
+    this.id = options.id ?? crypto.randomUUID();
     this.neighbors = options.neighbors ?? [];
     this.roomName = options.roomName;
     this.usable = options.usable;
@@ -40,7 +38,7 @@ export class Cell {
       if ((cell.id !== this.id) && findFunction(cell)) {
         let distance = 0;
         while (cell !== undefined && metadata[cell.id].parent !== undefined) {
-          cell =  metadata[cell.id].parent;
+          cell = metadata[cell.id].parent;
           distance += 1;
         }
         return distance;
