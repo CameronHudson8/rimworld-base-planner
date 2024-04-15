@@ -1,32 +1,37 @@
 {
-  "name": "rimworld-base-planner",
-  "version": "0.0.1",
-  "description": "This tool optimizes a [Rimworld](https://rimworldgame.com/) base layout based on space needed for room types and available land.",
-  "main": "index.js",
-  "scripts": {
-    "test": "jest"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/CameronHudson8/rimworld-base-planner.git"
-  },
-  "keywords": [
-    "rimworld",
-    "simulated",
-    "annealing"
-  ],
-  "author": "Cameron Hudson",
-  "license": "Apache-2.0",
-  "bugs": {
-    "url": "https://github.com/CameronHudson8/rimworld-base-planner/issues"
-  },
-  "homepage": "https://github.com/CameronHudson8/rimworld-base-planner#readme",
-  "devDependencies": {
-    "@babel/preset-env": "^7.24.4",
-    "@babel/preset-typescript": "^7.24.1",
-    "@types/jest": "^29.5.12",
-    "@types/node": "^20.12.7",
-    "jest": "^29.7.0",
-    "typescript": "^5.4.5"
-  }
+    "name": "rimworld-base-planner",
+    "version": "0.0.1",
+    "description": "This tool optimizes a [Rimworld](https://rimworldgame.com/) base layout based on space needed for room types and available land.",
+    "main": "index.js",
+    "scripts": {
+        "plan": "npx tsx main.ts",
+        "test": "jest"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/CameronHudson8/rimworld-base-planner.git"
+    },
+    "keywords": [
+        "rimworld",
+        "simulated",
+        "annealing"
+    ],
+    "author": "Cameron Hudson",
+    "license": "Apache-2.0",
+    "bugs": {
+        "url": "https://github.com/CameronHudson8/rimworld-base-planner/issues"
+    },
+    "homepage": "https://github.com/CameronHudson8/rimworld-base-planner#readme",
+    "devDependencies": {
+        "@babel/preset-env": "^7.24.4",
+        "@babel/preset-typescript": "^7.24.1",
+        "@types/jest": "^29.5.12",
+        "@types/js-yaml": "^4.0.9",
+        "@types/node": "^20.12.7",
+        "jest": "^29.7.0",
+        "typescript": "^5.4.5"
+    },
+    "dependencies": {
+        "js-yaml": "^4.1.0"
+    }
 }

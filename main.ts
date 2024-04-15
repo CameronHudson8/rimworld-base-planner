@@ -1,81 +1,33 @@
-import { Base } from "./classes/Base";
+import fs from 'fs/promises';
 
-function main() {
-    const baseRequirements = {
-        roomRequirements: [
-            {
-                name: 'storage-0',
-                size: 2,
-            },
-            {
-                name: 'kitchen-0',
-                size: 1,
-            },
-            {
-                name: 'butcher-0',
-                size: 1,
-            },
-            {
-                name: 'bedroom-0',
-                size: 1,
-            },
-            {
-                name: 'bedroom-1',
-                size: 1,
-            },
-            {
-                name: 'bedroom-2',
-                size: 1,
-            },
-            {
-                name: 'bedroom-3',
-                size: 1,
-            },
-            {
-                name: 'bedroom-4',
-                size: 1,
-            },
-        ],
-        spaceAvailable: [
-            [
-                {
-                    usable: true,
-                },
-                {
-                    usable: true,
-                },
-                {
-                    usable: true,
-                },
-            ],
-            [
-                {
-                    usable: true,
-                },
-                {
-                    usable: true,
-                },
-                {
-                    usable: true,
-                },
-            ],
-            [
-                {
-                    usable: true,
-                },
-                {
-                    usable: true,
-                },
-                {
-                    usable: true,
-                },
-            ],
-        ]
-    };
-    const base = new Base(baseRequirements);
-    const baseLayout = base.getBaseLayout();
+import yaml from 'js-yaml';
 
-    console.log(JSON.stringify(baseLayout, null, 4));
+import {
+  Base,
+  BaseOptions
+} from "./classes/Base";
+import { Cell } from './classes/Cell';
+
+async function main() {
+  const filename = 'the-legua-covenant.yaml'
+  const fileContent = await fs.readFile(filename, 'utf-8');
+  const baseOptions = yaml.load(fileContent) as BaseOptions;
+  const base = new Base(baseOptions);
+  const baseLayout = base.optimizeBaseLayout();
+  const baseLayoutYaml = yaml.dump(baseLayout, {
+    replacer: (key, value) => {
+      return value instanceof Cell
+        ? {
+          ...value,
+          neighbors: undefined,
+        }
+        : value;
+    }
+  });
+  console.log(baseLayoutYaml);
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

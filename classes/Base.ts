@@ -39,14 +39,17 @@ export class Base {
     return this.matrix;
   }
 
-  optimizeBaseLayout({ iterations }: BaseLayoutOptimizationOptions = { iterations: 100 }): Cell[][] {
-    const initialTemperature = 1;
+  optimizeBaseLayout({ iterations }: BaseLayoutOptimizationOptions = { iterations: 10000 }): Cell[][] {
 
-    let currentEnergy = this._getEnergy(this.matrix);
+    let currentMatrix = this.matrix;
+    let currentEnergy = this._getEnergy(currentMatrix);
+    
+    let globalMinimumMatrix = this.matrix;
+    let globalMinimumEnergy = Infinity;
 
     for (let i = 0; i < iterations; i += 1) {
       // Create a near-clone of based on the existing matrix.
-      const candidateMatrix = this._cloneBaseLayout(this.matrix);
+      const candidateMatrix = this._cloneBaseLayout(currentMatrix);
       // Swap the room assignments of 2 cells in candidateMatrix (ONLY their roomNames).
       const usableCells = candidateMatrix
         .flat()
@@ -65,13 +68,23 @@ export class Base {
       const candidateEnergy = this._getEnergy(candidateMatrix);
       const acceptanceProbabilityThreshold = (1 - i / iterations);
 
-      if (candidateEnergy < currentEnergy || Math.random() < acceptanceProbabilityThreshold) {
+      if (candidateEnergy < currentEnergy) {
+        console.log(`Energy decreased from ${currentEnergy} to ${candidateEnergy}.`);
+        currentMatrix = candidateMatrix;
+        currentEnergy = candidateEnergy;
+        if (currentEnergy < globalMinimumEnergy) {
+          globalMinimumMatrix = candidateMatrix;
+          globalMinimumEnergy = candidateEnergy;
+        }
+      } else if (Math.random() < acceptanceProbabilityThreshold) {
+        console.log(`Energy increased from ${currentEnergy} to ${candidateEnergy} (probability ${acceptanceProbabilityThreshold}).`);
         this.matrix = candidateMatrix;
-        console.log(`Energy changed from ${currentEnergy} to ${candidateEnergy}.`);
         currentEnergy = candidateEnergy;
       }
     }
-    
+
+    console.log(`Global minimum energy = ${globalMinimumEnergy}.`);
+    this.matrix = globalMinimumMatrix
     return this.matrix;
   }
 
