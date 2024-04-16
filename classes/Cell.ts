@@ -1,4 +1,5 @@
 export type CellOptions = {
+  coordinates: number[];
   id?: string;
   neighbors: Cell[];
   roomName?: string;
@@ -7,17 +8,30 @@ export type CellOptions = {
 }
 
 export class Cell {
+  coordinates: number[];
   id: string;
   neighbors: Cell[];
   roomName?: string;
   usable: boolean
   used?: boolean;
   constructor(options: CellOptions) {
+    this.coordinates = options.coordinates ?? [];
     this.id = options.id ?? crypto.randomUUID();
     this.neighbors = options.neighbors ?? [];
     this.roomName = options.roomName;
     this.usable = options.usable;
     this.used = options.used;
+  }
+  getDistanceTo(otherCell: Cell) {
+    if (this.coordinates.length !== otherCell.coordinates.length) {
+      throw new Error(`Cell ${this.id} has ${this.coordinates.length} coordinates, but cell ${otherCell.id} has ${otherCell.coordinates.length} coordinates.`);
+    }
+    const distance = this.coordinates
+      .map((_, i) => {
+        return Math.abs(this.coordinates[i] - otherCell.coordinates[i]);
+      })
+      .reduce((sum, distance) => sum + distance);
+    return distance;
   }
   getDistanceToNearest(findFunction: (cell: Cell) => boolean): number {
     // Breadth first search

@@ -40,11 +40,11 @@ export class Base {
     return this.matrix;
   }
 
-  optimizeBaseLayout({ iterations }: BaseLayoutOptimizationOptions = { iterations: 10000 }): Cell[][] {
+  optimizeBaseLayout({ iterations }: BaseLayoutOptimizationOptions = { iterations: 100000 }): Cell[][] {
 
     let currentMatrix = this.matrix;
     let currentEnergy = this._getEnergy(currentMatrix);
-    
+
     let globalMinimumMatrix = this.matrix;
     let globalMinimumEnergy = Infinity;
 
@@ -93,6 +93,7 @@ export class Base {
   _cloneBaseLayout(originalMatrix: Cell[][]): Cell[][] {
     const matrix = originalMatrix.map((row) => {
       return row.map((cell) => new Cell({
+        coordinates: [...cell.coordinates],
         id: cell.id,
         neighbors: [],
         roomName: cell.roomName,
@@ -132,38 +133,41 @@ export class Base {
         if (!cell.roomName) {
           return 0;
         }
-        const room = this.rooms.find((room) => room.name === cell.roomName);
-        if (room === undefined) {
-          throw new Error(`A cell with roomName ${cell.roomName} is in the matrix, but somehow not in the room list.`);
-        }
-        if (room.size === 1) {
-          const energy = 0;
-          return energy;
-        }
-        const distance = cell.getDistanceToNearest((neighbor) => neighbor.roomName === cell.roomName);
-        const energy = Math.pow(distance, 2);
-        intraRoomConnections += 1;
+        const sameRoomCells = cells.filter((otherCell) => {
+          return otherCell.id !== cell.id && otherCell.roomName === cell.roomName;
+        });
+        const energy = sameRoomCells
+          .map((sameRoomCell) => cell.getDistanceTo(sameRoomCell))
+          .map((distance) => Math.pow(distance, 2))
+          .reduce((sum, energy) => sum + energy, 0);
+
+        intraRoomConnections += sameRoomCells.length;
         return energy;
       })
-      .reduce((sum, energy) => sum + energy);
+      .reduce((sum, energy) => sum + energy, 0);
 
     let interRoomConnections = 0;
-    const interRoomEnergy = this.rooms
-      .map((room) => {
-        const cellsInRoom = cells.filter((cell) => cell.roomName === room.name);
-        const roomLinkEnergy = room.links
-          .map((link) => {
-            const minLinkDistance = cellsInRoom
-              .map((cell) => cell.getDistanceToNearest((cell) => cell.roomName === link.name))
-              .reduce((minDistance, distance) => Math.min(minDistance, distance), Infinity);
-            const linkEnergy = Math.pow(minLinkDistance, 2);
-            interRoomConnections += 1;
-            return linkEnergy;
-          })
-          .reduce((sum, linkEnergy) => sum + linkEnergy, 0);
-        return roomLinkEnergy;
+    const interRoomEnergy = cells
+      .map((cell) => {
+        if (!cell.roomName) {
+          return 0;
+        }
+        const linkedRoomNames = this.rooms
+          .filter((room) => room.name === cell.roomName)
+          .map((room) => room.links)
+          .flat()
+          .map((link) => link.name);
+        const linkedRoomCells = cells.filter((otherCell) => {
+          return linkedRoomNames.includes(otherCell.roomName || '');
+        });
+        const energy = linkedRoomCells
+          .map((linkedRoomCell) => cell.getDistanceTo(linkedRoomCell))
+          .map((distance) => Math.pow(distance, 2))
+          .reduce((sum, energy) => sum + energy, 0);
+        interRoomConnections += linkedRoomCells.length;
+        return energy;
       })
-      .reduce((sum, roomLinkEnergy) => sum + roomLinkEnergy, 0);
+      .reduce((sum, energy) => sum + energy, 0);
 
     // Give equal weight to the intraRoomEnergy and the interRoomEnergy.
     return intraRoomEnergy / intraRoomConnections + interRoomEnergy / interRoomConnections;
@@ -183,6 +187,7 @@ export class Base {
       for (let j in cells[i]) {
         if (!cells[i][j].usable) {
           neighborlessMatrix[i].push(new Cell({
+            coordinates: [Number(i), Number(j)],
             neighbors: [],
             usable: cells[i][j].usable,
             used: false,
@@ -194,6 +199,7 @@ export class Base {
           .splice(Math.floor(Math.random() * roomNameList.length), 1)
           .shift();
         neighborlessMatrix[i].push(new Cell({
+          coordinates: [Number(i), Number(j)],
           neighbors: [],
           roomName: roomName,
           usable: cells[i][j].usable,
