@@ -162,10 +162,6 @@ export class Base {
     return intraRoomEnergy + interRoomEnergy;
   }
 
-  // _putNeighbors(neighborlessMatrix: Cell[][]): Cell[][] {
-
-  // }
-
   _buildMatrix(rooms: Room[], cells: { usable: boolean }[][]): Cell[][] {
     const roomNameList = [];
     for (const room of rooms) {
@@ -186,10 +182,13 @@ export class Base {
           }));
           continue;
         }
-        const roomName = roomNameList.shift();
+
+        const roomName = roomNameList
+          .splice(Math.floor(Math.random() * roomNameList.length), 1)
+          .shift();
         neighborlessMatrix[i].push(new Cell({
           neighbors: [],
-          roomName,
+          roomName: roomName,
           usable: cells[i][j].usable,
           used: roomName !== undefined,
         }));
