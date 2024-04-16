@@ -55,7 +55,8 @@ export class Base {
         .flat()
         .filter((cell) => cell.usable);
       const cell1 = usableCells[Math.floor(Math.random() * usableCells.length)];
-      const cell2 = usableCells[Math.floor(Math.random() * usableCells.length)];
+      const cellsInOtherRooms = usableCells.filter((cell) => cell.roomName !== cell1.roomName);
+      const cell2 = cellsInOtherRooms[Math.floor(Math.random() * cellsInOtherRooms.length)];
       const cell1RoomName = cell1.roomName;
       const cell1Used = cell1.used;
       const cell2RoomName = cell2.roomName;
