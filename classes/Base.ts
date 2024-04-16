@@ -1,4 +1,5 @@
-import { Cell } from './Cell'
+import { Cell } from 'classes/Cell';
+import { logger } from 'tools/logger';
 
 export type Room = {
   links: { name: string }[];
@@ -70,21 +71,21 @@ export class Base {
       const acceptanceProbabilityThreshold = (1 - i / iterations);
 
       if (candidateEnergy < currentEnergy) {
-        console.log(`Energy decreased from ${currentEnergy} to ${candidateEnergy}.`);
+        logger.debug(`Energy decreased from ${currentEnergy} to ${candidateEnergy}.`);
         currentMatrix = candidateMatrix;
         currentEnergy = candidateEnergy;
         if (currentEnergy < globalMinimumEnergy) {
           globalMinimumMatrix = candidateMatrix;
           globalMinimumEnergy = candidateEnergy;
         }
-      } else if (Math.random() < acceptanceProbabilityThreshold) {
-        console.log(`Energy increased from ${currentEnergy} to ${candidateEnergy} (probability ${acceptanceProbabilityThreshold}).`);
+      } else if (candidateEnergy > currentEnergy && Math.random() < acceptanceProbabilityThreshold) {
+        logger.debug(`Energy increased from ${currentEnergy} to ${candidateEnergy} (probability ${acceptanceProbabilityThreshold}).`);
         this.matrix = candidateMatrix;
         currentEnergy = candidateEnergy;
       }
     }
 
-    console.log(`Global minimum energy = ${globalMinimumEnergy}.`);
+    logger.debug(`Global minimum energy = ${globalMinimumEnergy}.`);
     this.matrix = globalMinimumMatrix
     return this.matrix;
   }
@@ -125,6 +126,7 @@ export class Base {
   _getEnergy(matrix: Cell[][]): number {
     const cells = matrix.flat();
 
+    let intraRoomConnections = 0;
     const intraRoomEnergy = cells
       .map((cell) => {
         if (!cell.roomName) {
@@ -135,15 +137,17 @@ export class Base {
           throw new Error(`A cell with roomName ${cell.roomName} is in the matrix, but somehow not in the room list.`);
         }
         if (room.size === 1) {
-          const energy = 1;
+          const energy = 0;
           return energy;
         }
         const distance = cell.getDistanceToNearest((neighbor) => neighbor.roomName === cell.roomName);
-        const energy = Math.pow(distance, 2) / room.size;
+        const energy = Math.pow(distance, 2);
+        intraRoomConnections += 1;
         return energy;
       })
       .reduce((sum, energy) => sum + energy);
 
+    let interRoomConnections = 0;
     const interRoomEnergy = this.rooms
       .map((room) => {
         const cellsInRoom = cells.filter((cell) => cell.roomName === room.name);
@@ -152,7 +156,8 @@ export class Base {
             const minLinkDistance = cellsInRoom
               .map((cell) => cell.getDistanceToNearest((cell) => cell.roomName === link.name))
               .reduce((minDistance, distance) => Math.min(minDistance, distance), Infinity);
-            const linkEnergy = Math.pow(minLinkDistance, 2) / 2;
+            const linkEnergy = Math.pow(minLinkDistance, 2);
+            interRoomConnections += 1;
             return linkEnergy;
           })
           .reduce((sum, linkEnergy) => sum + linkEnergy, 0);
@@ -160,7 +165,8 @@ export class Base {
       })
       .reduce((sum, roomLinkEnergy) => sum + roomLinkEnergy, 0);
 
-    return intraRoomEnergy + interRoomEnergy;
+    // Give equal weight to the intraRoomEnergy and the interRoomEnergy.
+    return intraRoomEnergy / intraRoomConnections + interRoomEnergy / interRoomConnections;
   }
 
   _buildMatrix(rooms: Room[], cells: { usable: boolean }[][]): Cell[][] {

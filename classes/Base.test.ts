@@ -3,7 +3,7 @@ import {
   BaseOptions,
   NotEnoughSpaceError
 } from './Base';
-import { Cell } from './Cell';
+import { Cell } from 'classes/Cell';
 
 describe('Base', () => {
 

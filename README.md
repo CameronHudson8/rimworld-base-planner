@@ -14,6 +14,16 @@ This tool optimizes a [Rimworld](https://rimworldgame.com/) base layout based on
     ```
     # example-base.yaml
 
+    cells:
+      - - usable: true
+        - usable: false
+        - usable: true
+      - - usable: true
+        - usable: false
+        - usable: true
+      - - usable: true
+        - usable: true
+        - usable: true
     rooms:
       - links:
           - name: kitchen
@@ -28,16 +38,6 @@ This tool optimizes a [Rimworld](https://rimworldgame.com/) base layout based on
           - name: kitchen
         name: storage
         size: 2
-    cells:
-      - - usable: true
-        - usable: false
-        - usable: true
-      - - usable: true
-        - usable: false
-        - usable: true
-      - - usable: true
-        - usable: true
-        - usable: true
     ```
 1. Run the program.
     ```

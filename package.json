@@ -32,6 +32,8 @@
         "typescript": "^5.4.5"
     },
     "dependencies": {
-        "js-yaml": "^4.1.0"
+        "js-yaml": "^4.1.0",
+        "winston": "^3.13.0",
+        "yargs": "^17.7.2"
     }
 }
