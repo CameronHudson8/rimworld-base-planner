@@ -1,0 +1,9 @@
+button {
+  height: 8vmin;
+  width: 8vmin;
+  background-color: white;
+}
+
+.active-button {
+	background-color: rgb(134 239 172);
+}
