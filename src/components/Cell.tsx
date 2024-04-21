@@ -25,7 +25,7 @@ export class Cell extends React.Component<CellProps, CellState> {
   render() {
     return (
       <button
-        className={`${this.props.usable && "active-button"}`}
+        className={`cell ${this.props.usable ? "cell-usable" : "cell-unusable"}`}
         onClick={() => this.props.setUsable(!this.props.usable)}
       >
         {String(this.props.roomName || '')}

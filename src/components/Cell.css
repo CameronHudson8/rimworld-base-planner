@@ -1,9 +1,16 @@
-button {
+.cell {
   height: 8vmin;
   width: 8vmin;
-  background-color: white;
 }
 
-.active-button {
-	background-color: rgb(134 239 172);
+.cell:hover {
+	opacity: 50%;
+}
+
+.cell-unusable {
+	background-color: gray;
+}
+
+.cell-usable {
+	background-color: white;
 }

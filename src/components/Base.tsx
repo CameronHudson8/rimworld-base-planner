@@ -2,16 +2,16 @@ import React from "react";
 import './Base.css';
 
 import { Cell, CellProps } from './Cell';
-import { Room } from './Room';
+import { RoomProps } from './Room';
 
 export type BaseProps = {
-  rooms: Room[];
-  size: number;
+  rooms: RoomProps[];
 }
 
 export type BaseState = {
   cellProps: CellProps[][];
   isOptimizing: boolean;
+  size: number;
 }
 
 export type BaseLayoutOptimizationOptions = {
@@ -28,17 +28,23 @@ export class NotEnoughSpaceError extends Error {
 export class Base extends React.Component<BaseProps, BaseState> {
   constructor(props: BaseProps) {
     super(props);
+    const initialSize = 7;
+
     const existingBaseStatesString = localStorage.getItem('baseState');
     const existingBaseState: BaseState = existingBaseStatesString
       ? JSON.parse(existingBaseStatesString)
       : undefined;
     if (existingBaseState) {
-      this.state = existingBaseState;
-    } else {
-
       this.state = {
-        cellProps: this._assignInitialRooms(this._buildCellProps()),
+        ...existingBaseState,
         isOptimizing: false,
+        size: initialSize,
+      };
+    } else {
+      this.state = {
+        cellProps: this._assignInitialRooms(this._buildCellProps(initialSize)),
+        isOptimizing: false,
+        size: initialSize,
       }
     }
   }
@@ -55,6 +61,53 @@ export class Base extends React.Component<BaseProps, BaseState> {
       .map((room) => room.size)
       .reduce((sum, roomSize) => sum + roomSize);
   }
+
+  // setSize(newSize: number) {
+  //   this.setState((state) => {
+  //     if (newSize === state.size) {
+  //       return state;
+  //     }
+  //     const cellProps = state.cellProps.map((row) => {
+  //       return row.map((_cellProps) => ({ ..._cellProps }));
+  //     });
+  //     let currentSize = state.size;
+  //     while (currentSize < newSize) {
+  //       // If the current size is EVEN,
+  //       // add a row on the TOP and a column on the RIGHT.
+  //       // If the current size is even,
+  //       // add a row on the BOTTOM and a column on the LEFT.
+  //       if (currentSize % 2 === 0) {
+  //         const newRow: CellProps[] = [];
+  //         for (let i = 0; i < currentSize; i += 1) {
+  //           newRow.push({
+  //             coordinates: [],
+  //             id: string;
+  //             initialUsable?: boolean;
+  //             roomName?: string;
+  //             setUsable: (usable: boolean) => void;
+  //             usable: boolean;
+  //             used: boolean;
+  //           })
+  //         }
+  //         cellProps.unshift(newRow);
+
+  //       } else {
+
+
+  //       }
+
+  //     }
+
+  //     if 
+
+
+  //     const newState = {
+  //       ...state,
+  //       size: newSize,
+  //     };
+  //     return newState
+  //   });
+  // }
 
   optimizeBaseLayout(state: BaseState, { iterations }: BaseLayoutOptimizationOptions = { iterations: 10000 }) {
     this._validateRoomSizes(this.props.rooms);
@@ -147,11 +200,11 @@ export class Base extends React.Component<BaseProps, BaseState> {
     return cellProps;
   }
 
-  _buildCellProps(): CellProps[][] {
+  _buildCellProps(size: number): CellProps[][] {
     const cellProps: CellProps[][] = [];
-    for (let i = 0; i < this.props.size; i += 1) {
+    for (let i = 0; i < size; i += 1) {
       cellProps.push([]);
-      for (let j = 0; j < this.props.size; j += 1) {
+      for (let j = 0; j < size; j += 1) {
         const key = `${String(i).padStart(4, '0')}${String(j).padStart(4, '0')}`
         cellProps[i].push({
           coordinates: [Number(i), Number(j)],
@@ -198,7 +251,7 @@ export class Base extends React.Component<BaseProps, BaseState> {
           return 0;
         }
         const sameRoomCellProps = cellProps.filter((otherCellProps) => {
-          return otherCellProps.id !== _cellProps.id && otherCellProps.roomName === _cellProps.roomName;
+          return otherCellProps !== _cellProps && otherCellProps.roomName === _cellProps.roomName;
         });
         const energy = sameRoomCellProps
           .map((sameRoomCellProps) => this._getDistance(_cellProps, sameRoomCellProps))
@@ -257,7 +310,7 @@ export class Base extends React.Component<BaseProps, BaseState> {
     });
   }
 
-  _validateRoomSizes(rooms: Room[]) {
+  _validateRoomSizes(rooms: RoomProps[]) {
     for (const room of rooms) {
       if (room.size < 1) {
         throw new Error(`Room with name '${room.name}' has room size '${room.size}', but the minimum room size is 1.`);
@@ -265,7 +318,7 @@ export class Base extends React.Component<BaseProps, BaseState> {
     }
   }
 
-  _validateRoomUniqueness(rooms: Room[]) {
+  _validateRoomUniqueness(rooms: RoomProps[]) {
     const uniqueRoomNames = new Set();
     for (const room of rooms) {
       if (uniqueRoomNames.has(room.name)) {
@@ -275,7 +328,7 @@ export class Base extends React.Component<BaseProps, BaseState> {
     }
   }
 
-  _validateLinkReciprocity(rooms: Room[]) {
+  _validateLinkReciprocity(rooms: RoomProps[]) {
     for (const room of rooms) {
       for (const link of room.links) {
         const linkedRoom = rooms.find((room) => room.name === link.name);
@@ -293,11 +346,24 @@ export class Base extends React.Component<BaseProps, BaseState> {
   render() {
     return (
       <div>
-        <div className="flex-row" >
+        <div className="size-input">
+          <p>Size</p>
+          <input
+            disabled={true}
+            // onChange={(event) => {
+            //   if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
+            //     this.setSize(Number(event.target.value));
+            //   }
+            // }}
+            type="number"
+            value={this.state.size}
+          />
+        </div>
+        <div className="cell-grid" >
           {
             this.state.cellProps.map((row, i) => (
               <div
-                className="flex justify-center"
+                className="cell-row"
                 key={String(i)}
               >
                 {
@@ -327,8 +393,9 @@ export class Base extends React.Component<BaseProps, BaseState> {
             </p>
           )
         }
+        <p>{this.state.isOptimizing}</p>
         <button
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+          // className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
           disabled={
             (this.cellsAvailable(this.state) < this.cellsNeeded())
             || this.state.isOptimizing
@@ -341,7 +408,7 @@ export class Base extends React.Component<BaseProps, BaseState> {
         >
           Optimize
         </button>
-      </div>
+      </div >
     );
   }
 

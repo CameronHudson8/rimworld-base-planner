@@ -1,3 +1,16 @@
 .error {
   color: red;
 }
+
+.cell-grid {
+  display: flex;
+}
+
+.cell-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.size-input {
+  display: flex;
+}
