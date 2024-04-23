@@ -3,7 +3,6 @@ import './Cell.css';
 
 export type CellProps = {
   coordinates: number[];
-  id: string;
   roomName?: string;
   setOwnProps: (cellProps: CellProps) => void;
   usable: boolean;

@@ -66,7 +66,6 @@ export function Base(props: BaseProps): ReactElement {
   //         for (let i = 0; i < currentSize; i += 1) {
   //           newRow.push({
   //             coordinates: [],
-  //             id: string;
   //             initialUsable?: boolean;
   //             roomName?: string;
   //             setUsable: (usable: boolean) => void;
@@ -118,9 +117,15 @@ export function Base(props: BaseProps): ReactElement {
         .flat()
         .filter((cellProps) => cellProps.usable);
 
-      const cell1Props = usableCellProps[Math.floor(Math.random() * usableCellProps.length)];
+      const cell1Props = _randomFromArray(usableCellProps);
+      if (!cell1Props) {
+        throw new Error(`Random selection from array unexpectedly returned undefined. Is the array usableCellProps empty? (length = ${usableCellProps?.length}).`);
+      }
       const cellsInOtherRoomsProps = usableCellProps.filter((cellProps) => cellProps.roomName !== cell1Props.roomName);
-      const cell2Props = cellsInOtherRoomsProps[Math.floor(Math.random() * cellsInOtherRoomsProps.length)];
+      const cell2Props = _randomFromArray(cellsInOtherRoomsProps);
+      if (!cell2Props) {
+        throw new Error(`Random selection from array unexpectedly returned undefined. Is the array cellsInOtherRoomsProps empty? (length = ${cellsInOtherRoomsProps.length}).`);
+      }
       const cell1RoomName = cell1Props.roomName;
       const cell2RoomName = cell2Props.roomName;
 
@@ -167,96 +172,103 @@ export function Base(props: BaseProps): ReactElement {
   }
 
   function reconcile(size: number, originalCellProps: CellProps[][]): CellProps[][] {
+    const reconcilers = [
+      _reconcileSize,
+      _reconcileRooms,
+    ];
+    let reconciledCellProps = originalCellProps;
+    for (const reconciler of reconcilers) {
+      reconciledCellProps = reconciler(size, reconciledCellProps);
+    }
     return _reconcileRooms(size, originalCellProps);
   }
 
-  function _reconcileRooms(size: number, originalCellProps: CellProps[][]): CellProps[][] {
-
-    const newCellProps: CellProps[][] = [];
-    for (let i = 0; i < size; i += 1) {
-      newCellProps.push([]);
-      for (let j = 0; j < size; j += 1) {
-        let savedRoomName = undefined;
-        let savedRoomUsability = false;
-        if (i in originalCellProps && j in originalCellProps[i]) {
-          savedRoomName = originalCellProps[i][j].roomName;
-          savedRoomUsability = originalCellProps[i][j].usable;
-        }
-        newCellProps[i].push({
-          coordinates: [Number(i), Number(j)],
-          id: String(crypto.getRandomValues(new Uint8Array(8))),
-          ...(savedRoomName && { roomName: savedRoomName }),
-          // This is overwritten in render().
-          setOwnProps: (cellProps) => { },
-          usable: savedRoomUsability ? true : false,
-        });
-      }
+  function _randomFromArray<T>(arr: T[]): T | undefined {
+    if (arr.length <= 0) {
+      return undefined;
     }
+    const choice = arr[Math.floor(Math.random() * arr.length)];
+    return choice;
+  }
 
-    const roomNames = props.rooms.map((room) => room.name);
+  function _randomFromObject(obj: { [key: string]: number }): string | undefined {
+    const arrayofChoices = Object.entries(obj)
+      .reduce(
+        (arrayofChoices: string[], [choice, count]) => [
+          ...arrayofChoices,
+          ...new Array(count).fill(choice),
+        ],
+        []
+      );
+    const choice = _randomFromArray(arrayofChoices);
+    return choice;
+  }
 
-    // Reconcile room names.
-    // Clear room names if the rooms are overassigned.
-    const roomCellCountsRemaining = props.rooms.reduce(
-      (roomCellCounts: { [roomName: string]: number }, room) => ({
-        ...roomCellCounts,
+  function _reconcileRooms(size: number, originalCellProps: CellProps[][]): CellProps[][] {
+    const roomSizesRemaining = props.rooms.reduce(
+      (roomSizesRemaining: { [roomName: string]: number }, room) => ({
+        ...roomSizesRemaining,
         [room.name]: room.size,
       }),
       {}
     );
-    for (const row of newCellProps) {
-      for (const _newCellProps of row) {
-        if (!_newCellProps.roomName) {
-          continue;
+    const originalCellPropsClean: CellProps[][] = new Array(size).fill(undefined).map((_, i) => {
+      return new Array(size).fill(undefined).map((_, j) => {
+        const originalCell = (
+          i in originalCellProps
+            && Array.isArray(originalCellProps[i])
+            && j in originalCellProps[i]
+            && typeof originalCellProps[i][j] === 'object'
+            ? originalCellProps[i][j]
+            : undefined
+        );
+        const usable = originalCell?.usable ? true : false;
+        const roomName =
+          !usable
+            ? undefined
+            : originalCell?.roomName
+              && originalCell.roomName in roomSizesRemaining
+              && roomSizesRemaining[originalCell.roomName] > 0
+              ? originalCell.roomName
+              : undefined;
+        if (roomName) {
+          roomSizesRemaining[roomName] -= 1;
         }
-        if (!roomNames.includes(_newCellProps.roomName)) {
-          delete _newCellProps.roomName;
-          continue;
+        return {
+          coordinates: [Number(i), Number(j)],
+          roomName,
+          // This is overwritten in render().
+          setOwnProps: (cellProps) => { },
+          usable,
+        };
+      });
+    });
+    const newCellProps: CellProps[][] = new Array(size).fill(undefined).map((_, i) => {
+      return new Array(size).fill(undefined).map((_, j) => {
+        const originalCell = originalCellPropsClean[i][j];
+        const roomName =
+          !originalCell.usable
+            ? undefined
+            : originalCell.roomName
+              ? originalCell.roomName
+              : _randomFromObject(roomSizesRemaining);
+        if (!originalCell.roomName && roomName) {
+          roomSizesRemaining[roomName] -= 1;
         }
-        const room = props.rooms.find((room) => room.name === _newCellProps.roomName);
-        if (!room) {
-          throw new Error(`Somehow room name ${_newCellProps.roomName} was not found in the rooms configuration, even though its presence was just verified.`);
-        }
-        if (roomCellCountsRemaining[_newCellProps.roomName] > 0) {
-          roomCellCountsRemaining[_newCellProps.roomName] -= 1;
-        } else {
-          delete _newCellProps.roomName;
-        }
-      }
-    }
-
-    // Reconcile room names.
-    // Assign remaining room names.
-    const remainingUsableCellPropsIndexes = [];
-    for (let i = 0; i < newCellProps.length; i += 1) {
-      for (let j = 0; j < newCellProps[i].length; j += 1) {
-        if (newCellProps[i][j].usable && !newCellProps[i][j].roomName) {
-          remainingUsableCellPropsIndexes.push([i, j]);
-        }
-      }
-    }
-    const roomCellNamesRemaining = Object.entries(roomCellCountsRemaining).reduce(
-      (roomCellNamesRemaining: string[], [roomName, count]) => {
-        for (let i = 0; i < count; i += 1) {
-          roomCellNamesRemaining.push(roomName);
-        }
-        return roomCellNamesRemaining;
-      },
-      []
-    );
-    while (remainingUsableCellPropsIndexes.length > 0) {
-      const _cellPropsIndexes = remainingUsableCellPropsIndexes
-        .splice(Math.floor(Math.random() * remainingUsableCellPropsIndexes.length), 1)
-        .pop();
-      if (!_cellPropsIndexes) {
-        throw new Error("Somehow one of the bases's cells was undefined.");
-      }
-      const [i, j] = _cellPropsIndexes;
-      // Assign the room name. It's actually ok if it's undefined near the end.
-      const roomName = roomCellNamesRemaining.pop();
-      newCellProps[i][j].roomName = roomName;
-    }
+        return {
+          coordinates: [Number(i), Number(j)],
+          roomName,
+          // This is overwritten in render().
+          setOwnProps: (cellProps) => { },
+          usable: originalCell.usable || false,
+        };
+      });
+    });
     return newCellProps;
+  }
+
+  function _reconcileSize(size: number, originalCellProps: CellProps[][]): CellProps[][] {
+    return originalCellProps;
   }
 
   function _cloneBaseLayout(originalCellProps: CellProps[][]): CellProps[][] {
@@ -270,7 +282,7 @@ export function Base(props: BaseProps): ReactElement {
 
   function _getDistance(cellProps1: CellProps, cellProps2: CellProps): number {
     if (cellProps1.coordinates.length !== cellProps2.coordinates.length) {
-      throw new Error(`Cell ${cellProps1.id} has ${cellProps1.coordinates.length} coordinates, but cell ${cellProps2.id} has ${cellProps2.coordinates.length} coordinates.`);
+      throw new Error(`Cell with coordinates ${cellProps1.coordinates} has ${cellProps1.coordinates.length} coordinates, but cell with coordinates ${cellProps1.coordinates} has ${cellProps2.coordinates.length} coordinates.`);
     }
     let distance = 0;
     for (let coord in cellProps1.coordinates) {
