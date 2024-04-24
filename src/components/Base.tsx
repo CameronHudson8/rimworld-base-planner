@@ -293,50 +293,32 @@ export function Base(props: BaseProps): ReactElement {
 
   function _getEnergy(matrix: CellProps[][]): number {
     const cellProps = matrix.flat();
-    let intraRoomConnections = 0;
-    const intraRoomEnergy = cellProps
+    const energy = cellProps
       .map((_cellProps) => {
         if (!_cellProps.roomName) {
           return 0;
         }
-        const sameRoomCellProps = cellProps.filter((otherCellProps) => {
-          return otherCellProps !== _cellProps && otherCellProps.roomName === _cellProps.roomName;
-        });
-        const energy = sameRoomCellProps
-          .map((sameRoomCellProps) => _getDistance(_cellProps, sameRoomCellProps))
-          .map((distance) => Math.pow(distance, 2))
-          .reduce((sum, energy) => sum + energy, 0);
-
-        intraRoomConnections += sameRoomCellProps.length;
-        return energy;
-      })
-      .reduce((sum, energy) => sum + energy, 0);
-
-    let interRoomConnections = 0;
-    const interRoomEnergy = cellProps
-      .map((_cellProps) => {
-        if (!_cellProps.roomName) {
-          return 0;
+        const room = props.rooms.find((room) => room.name === _cellProps.roomName);
+        if (!room) {
+          throw new Error(`Somehow a cell has room name ${_cellProps.roomName}, but there is no such room.`);
         }
-        const linkedRoomNames = props.rooms
-          .filter((room) => room.name === _cellProps.roomName)
-          .map((room) => room.links)
-          .flat()
-          .map((link) => link.name);
-        const linkedRoomCellProps = cellProps.filter((otherCellProps) => {
-          return linkedRoomNames.includes(otherCellProps.roomName ?? '');
+        const sameOrLinkedRoomNames = [
+          _cellProps.roomName,
+          ...room.links.map((link) => link.name),
+        ];
+        const similarOrLinkedCells = cellProps.filter((otherCellProps) => {
+          return otherCellProps !== _cellProps
+            && otherCellProps.roomName
+            && sameOrLinkedRoomNames.includes(otherCellProps.roomName);
         });
-        const energy = linkedRoomCellProps
-          .map((_linkedRoomCellProps) => _getDistance(_cellProps, _linkedRoomCellProps))
+        const energy = similarOrLinkedCells
+          .map((similarOrLinkedCell) => _getDistance(_cellProps, similarOrLinkedCell))
           .map((distance) => Math.pow(distance, 2))
           .reduce((sum, energy) => sum + energy, 0);
-        interRoomConnections += linkedRoomCellProps.length;
         return energy;
       })
       .reduce((sum, energy) => sum + energy, 0);
-
-    // Give equal weight to the intraRoomEnergy and the interRoomEnergy.
-    return intraRoomEnergy / Math.max(1, intraRoomConnections) + interRoomEnergy / Math.max(1, interRoomConnections);
+    return energy;
   }
 
   function _setOneCellProps(i: number, j: number, changedCellProps: CellProps) {
