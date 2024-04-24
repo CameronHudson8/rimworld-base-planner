@@ -6,15 +6,8 @@ import { RoomProps } from './Room';
 
 export type BaseProps = {
   rooms: RoomProps[];
-}
-
-export type BaseState = {
-  cellProps: CellProps[][];
-  isOptimizing: boolean;
-  size: number;
-}
-
-export type BaseLayoutOptimizationOptions = {
+  intraRoomWeight: number;
+  interRoomWeight: number;
   iterations: number;
 }
 
@@ -98,7 +91,7 @@ export function Base(props: BaseProps): ReactElement {
     return valueString !== null ? JSON.parse(valueString) : undefined;
   }
 
-  function optimizeBaseLayout(cellProps: CellProps[][], { iterations }: BaseLayoutOptimizationOptions = { iterations: 10000 }) {
+  function optimizeBaseLayout(cellProps: CellProps[][], iterations: number) {
     _validateRoomSizes(props.rooms);
     _validateRoomUniqueness(props.rooms);
     _validateLinkReciprocity(props.rooms);
@@ -137,14 +130,11 @@ export function Base(props: BaseProps): ReactElement {
       const candidateEnergy = _getEnergy(candidateCellProps);
       const acceptanceProbabilityThreshold = (1 - iteration / iterations);
 
-      if (candidateEnergy < currentEnergy) {
+      if (
+        (candidateEnergy < currentEnergy)
+        || (candidateEnergy > currentEnergy && Math.random() < acceptanceProbabilityThreshold)
+      ) {
         // console.log(`Energy decreased from (${currentEnergy}) to ${candidateEnergy}.`);
-        _setOneCellProps(cell1i, cell1j, cell1Props);
-        _setOneCellProps(cell2i, cell2j, cell2Props);
-        currentCellProps = candidateCellProps;
-        currentEnergy = candidateEnergy;
-      } else if (candidateEnergy > currentEnergy && Math.random() < acceptanceProbabilityThreshold) {
-        // console.log(`Energy increased from (${currentEnergy}) to ${candidateEnergy} (probability ${acceptanceProbabilityThreshold}).`);
         _setOneCellProps(cell1i, cell1j, cell1Props);
         _setOneCellProps(cell2i, cell2j, cell2Props);
         currentCellProps = candidateCellProps;
@@ -302,19 +292,30 @@ export function Base(props: BaseProps): ReactElement {
         if (!room) {
           throw new Error(`Somehow a cell has room name ${_cellProps.roomName}, but there is no such room.`);
         }
-        const sameOrLinkedRoomNames = [
-          _cellProps.roomName,
-          ...room.links.map((link) => link.name),
-        ];
-        const similarOrLinkedCells = cellProps.filter((otherCellProps) => {
+        const sameRoomCells = cellProps.filter((otherCellProps) => {
           return otherCellProps !== _cellProps
-            && otherCellProps.roomName
-            && sameOrLinkedRoomNames.includes(otherCellProps.roomName);
+            && otherCellProps.roomName === _cellProps.roomName;
         });
-        const energy = similarOrLinkedCells
-          .map((similarOrLinkedCell) => _getDistance(_cellProps, similarOrLinkedCell))
-          .map((distance) => Math.pow(distance, 2))
-          .reduce((sum, energy) => sum + energy, 0);
+        const linkedRoomNames = room.links.map((link) => link.name);
+        const linkedRoomCells = cellProps.filter((otherCellProps) => {
+          return otherCellProps.roomName && linkedRoomNames.includes(otherCellProps.roomName);
+        });
+
+        const [
+          intraRoomEnergy,
+          interRoomEnergy,
+        ] = [
+          sameRoomCells,
+          linkedRoomCells,
+        ]
+          .map((otherCells) => otherCells
+            .map((otherCell) => _getDistance(_cellProps, otherCell))
+            .map((distance) => Math.pow(distance, 2))
+            .reduce((sum, energy) => sum + energy, 0)
+          );
+        const energy =
+          Math.pow(intraRoomEnergy, props.intraRoomWeight)
+          + Math.pow(interRoomEnergy, props.interRoomWeight);
         return energy;
       })
       .reduce((sum, energy) => sum + energy, 0);
@@ -425,7 +426,7 @@ export function Base(props: BaseProps): ReactElement {
         }
         onClick={(event) => {
           setIsOptimizing(true);
-          optimizeBaseLayout(cellProps);
+          optimizeBaseLayout(cellProps, props.iterations);
           setIsOptimizing(false);
         }}
       >

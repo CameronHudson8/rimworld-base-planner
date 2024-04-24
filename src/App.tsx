@@ -217,7 +217,10 @@ export function App(props: AppProps): ReactElement {
       <h1>Rimworld Base Planner</h1>
       <Base
         rooms={rooms}
-      ></Base>
+        intraRoomWeight={2}
+        interRoomWeight={1}
+        iterations={Math.pow(2, 14)}
+        ></Base>
     </div>
   );
 }
