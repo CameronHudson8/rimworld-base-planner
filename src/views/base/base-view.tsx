@@ -1,15 +1,19 @@
 import { ReactElement, useState } from "react";
-import './Base.css';
 
-import { Cell, CellProps } from './Cell';
-import { RoomProps } from './Room';
+import {
+  CellView,
+  CellViewProps,
+} from '../cell';
+import { RoomViewProps } from '../room';
 
-export type BaseProps = {
-  rooms: RoomProps[];
+export type BaseViewProps = {
+  rooms: RoomViewProps[];
   intraRoomWeight: number;
   interRoomWeight: number;
   iterations: number;
 }
+
+export type BaseViewState = {}
 
 export class NotEnoughSpaceError extends Error {
   constructor(cellsAvailable: number, cellsNeeded: number) {
@@ -18,15 +22,13 @@ export class NotEnoughSpaceError extends Error {
   }
 }
 
-export function Base(props: BaseProps): ReactElement {
+export function BaseView(props: BaseViewProps): ReactElement {
 
   const [isOptimizing, setIsOptimizing] = useState(false);
 
   const defaultSize = 7;
-  // const size = getStateFromLocalStorage<number>('size', defaultSize);
-  // const [size, setReconciledSize] = useStateWithLocalStorage('size', savedSize);
 
-  const emptyMatrix: CellProps[][] = new Array(defaultSize).fill(undefined).map((_, i) => {
+  const emptyMatrix: CellViewProps[][] = new Array(defaultSize).fill(undefined).map((_, i) => {
     return new Array(defaultSize).fill(undefined).map((_, j) => ({
       coordinates: [i, j],
       setOwnProps: (cellProps) => _withNewCellProps(emptyMatrix, cellProps),
@@ -34,7 +36,7 @@ export function Base(props: BaseProps): ReactElement {
     }));
   });
 
-  const savedMatrix = getStateFromLocalStorage<CellProps[][]>('matrix', emptyMatrix);
+  const savedMatrix = getStateFromLocalStorage<CellViewProps[][]>('matrix', emptyMatrix);
   const reconciledSavedMatrix = reconcile(savedMatrix.length, savedMatrix, 'reconciling matrix returned from getStateFromLocalStorage');
 
 
@@ -44,12 +46,12 @@ export function Base(props: BaseProps): ReactElement {
     const reconciledMatrix = reconcile(size, matrix, 'setting size');
     setReconciledMatrix(reconciledMatrix);
   };
-  const setMatrix = (matrix: CellProps[][]) => {
+  const setMatrix = (matrix: CellViewProps[][]) => {
     const reconciledMatrix = reconcile(size, matrix, 'setting matrix');
     setReconciledMatrix(reconciledMatrix);
   };
 
-  function cellsAvailable(matrix: CellProps[][]): number {
+  function cellsAvailable(matrix: CellViewProps[][]): number {
     return matrix
       .flat()
       .filter((cellProps) => cellProps.usable)
@@ -67,11 +69,11 @@ export function Base(props: BaseProps): ReactElement {
     return valueString !== null ? JSON.parse(valueString) : defaultValue;
   }
 
-  function optimizeBaseLayout(originalMatrix: CellProps[][], iterations: number) {
+  function optimizeBaseLayout(originalMatrix: CellViewProps[][], iterations: number) {
     _validateRoomSizes(props.rooms);
     _validateRoomUniqueness(props.rooms);
     _validateLinkReciprocity(props.rooms);
-    let currentMatrix: CellProps[][] = _cloneMatrix(originalMatrix);
+    let currentMatrix: CellViewProps[][] = _cloneMatrix(originalMatrix);
     let currentEnergy = _getEnergy(currentMatrix);
     let globalMinimumMatrix = currentMatrix;
     let globalMinimumEnergy = currentEnergy;
@@ -132,7 +134,7 @@ export function Base(props: BaseProps): ReactElement {
     ];
   }
 
-  function reconcile(size: number, originalCellProps: CellProps[][], reason: string): CellProps[][] {
+  function reconcile(size: number, originalCellProps: CellViewProps[][], reason: string): CellViewProps[][] {
     const reconcilers = [
       _reconcileSize,
       _reconcileRooms,
@@ -144,12 +146,12 @@ export function Base(props: BaseProps): ReactElement {
     return reconciledCellProps;
   }
 
-  function _cloneMatrix(originalMatrix: CellProps[][]): CellProps[][] {
+  function _cloneMatrix(originalMatrix: CellViewProps[][]): CellViewProps[][] {
     const clonedMatrix = originalMatrix.map((row) => {
       return row.map((cellProps) => ({
-        coordinates: [ ...cellProps.coordinates ],
+        coordinates: [...cellProps.coordinates],
         roomName: cellProps.roomName,
-        setOwnProps: (cellProps: CellProps) => _withNewCellProps(clonedMatrix, cellProps),
+        setOwnProps: (cellProps: CellViewProps) => _withNewCellProps(clonedMatrix, cellProps),
         usable: cellProps.usable,
       }));
     });
@@ -177,15 +179,15 @@ export function Base(props: BaseProps): ReactElement {
     return choice;
   }
 
-  function _reconcileRooms(size: number, originalCellProps: CellProps[][]): CellProps[][] {
-    const roomSizesRemaining = props.rooms.reduce(
-      (roomSizesRemaining: { [roomName: string]: number }, room) => ({
+  function _reconcileRooms(size: number, originalCellProps: CellViewProps[][]): CellViewProps[][] {
+    const roomSizesRemaining: { [roomName: string]: number } = props.rooms.reduce(
+      (roomSizesRemaining, room) => ({
         ...roomSizesRemaining,
         [room.name]: room.size,
       }),
       {}
     );
-    const originalCellPropsClean: CellProps[][] = new Array(size).fill(undefined).map((_, i) => {
+    const originalCellPropsClean: CellViewProps[][] = new Array(size).fill(undefined).map((_, i) => {
       return new Array(size).fill(undefined).map((_, j) => {
         const originalCell = (
           i in originalCellProps
@@ -210,12 +212,12 @@ export function Base(props: BaseProps): ReactElement {
         return {
           coordinates: [Number(i), Number(j)],
           roomName,
-          setOwnProps: (cellProps: CellProps) => _withNewCellProps(originalCellPropsClean, cellProps),
+          setOwnProps: (cellProps: CellViewProps) => _withNewCellProps(originalCellPropsClean, cellProps),
           usable,
         };
       });
     });
-    const newCellProps: CellProps[][] = new Array(size).fill(undefined).map((_, i) => {
+    const newCellProps: CellViewProps[][] = new Array(size).fill(undefined).map((_, i) => {
       return new Array(size).fill(undefined).map((_, j) => {
         const originalCell = originalCellPropsClean[i][j];
         const roomName =
@@ -251,7 +253,7 @@ export function Base(props: BaseProps): ReactElement {
    *   If the current size is ODD,
    *     remove a row from the BOTTOM and a column from the LEFT.
    */
-  function _reconcileSize(size: number, originalMatrix: CellProps[][]): CellProps[][] {
+  function _reconcileSize(size: number, originalMatrix: CellViewProps[][]): CellViewProps[][] {
     const newMatrix = _cloneMatrix(originalMatrix);
 
     for (let i = 0; i < size; i += 1) {
@@ -316,7 +318,7 @@ export function Base(props: BaseProps): ReactElement {
     return newMatrix;
   }
 
-  function _getDistance(cellProps1: CellProps, cellProps2: CellProps): number {
+  function _getDistance(cellProps1: CellViewProps, cellProps2: CellViewProps): number {
     if (cellProps1.coordinates.length !== cellProps2.coordinates.length) {
       throw new Error(`Cell with coordinates ${cellProps1.coordinates} has ${cellProps1.coordinates.length} coordinates, but cell with coordinates ${cellProps1.coordinates} has ${cellProps2.coordinates.length} coordinates.`);
     }
@@ -327,7 +329,7 @@ export function Base(props: BaseProps): ReactElement {
     return distance;
   }
 
-  function _getEnergy(matrix: CellProps[][]): number {
+  function _getEnergy(matrix: CellViewProps[][]): number {
     const cellProps = matrix.flat();
     const energy = cellProps
       .map((_cellProps) => {
@@ -368,7 +370,7 @@ export function Base(props: BaseProps): ReactElement {
     return energy;
   }
 
-  function _withNewCellProps(originalMatrix: CellProps[][], newCellProps: CellProps) {
+  function _withNewCellProps(originalMatrix: CellViewProps[][], newCellProps: CellViewProps) {
     const [i, j] = newCellProps.coordinates;
     const newMatrix = originalMatrix.map((row, rowNum) => {
       return row.map((cellProps, colNum) => ({
@@ -383,7 +385,7 @@ export function Base(props: BaseProps): ReactElement {
     return newMatrix;
   }
 
-  function _validateRoomSizes(rooms: RoomProps[]) {
+  function _validateRoomSizes(rooms: RoomViewProps[]) {
     for (const room of rooms) {
       if (room.size < 1) {
         throw new Error(`Room with name '${room.name}' has room size '${room.size}', but the minimum room size is 1.`);
@@ -391,7 +393,7 @@ export function Base(props: BaseProps): ReactElement {
     }
   }
 
-  function _validateRoomUniqueness(rooms: RoomProps[]) {
+  function _validateRoomUniqueness(rooms: RoomViewProps[]) {
     const uniqueRoomNames = new Set();
     for (const room of rooms) {
       if (uniqueRoomNames.has(room.name)) {
@@ -401,7 +403,7 @@ export function Base(props: BaseProps): ReactElement {
     }
   }
 
-  function _validateLinkReciprocity(rooms: RoomProps[]) {
+  function _validateLinkReciprocity(rooms: RoomViewProps[]) {
     for (const room of rooms) {
       for (const link of room.links) {
         const linkedRoom = rooms.find((room) => room.name === link.name);
@@ -443,9 +445,9 @@ export function Base(props: BaseProps): ReactElement {
               {
                 row.map((cellProps, j) => {
                   return (
-                    <Cell
+                    <CellView
                       {...cellProps}
-                      setOwnProps={(cellProps) => {
+                      setOwnProps={(cellProps: CellViewProps) => {
                         const newMatrix = _withNewCellProps(matrix, cellProps);
                         setMatrix(newMatrix);
                       }}

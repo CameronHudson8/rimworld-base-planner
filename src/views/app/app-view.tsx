@@ -1,82 +1,96 @@
 import { ReactElement } from 'react';
-import './App.css';
-import { Base } from './components/Base';
-import { RoomProps } from './components/Room';
+import './app-view.css';
+import { BaseView } from '../base';
+import { RoomViewProps } from '../room';
 
-export type AppProps = {}
+export type AppViewProps = {}
 
-export type AppState = {
-  rooms: RoomProps[];
+export type AppViewState = {
+  rooms: RoomViewProps[];
 }
-export function App(props: AppProps): ReactElement {
+export function AppView(props: AppViewProps): ReactElement {
 
-  const rooms = [
+  const rooms: RoomViewProps[] = [
     {
+      color: "#f542e9",
       links: [],
       name: "batteries",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-1",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-2",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-3",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-4",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-5",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-6",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-7",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-8",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-9",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-10",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-11",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [],
       name: "bedroom-12",
       size: 1
     },
     {
+      color: "#f542e9",
       links: [
         {
           name: "pen-general"
@@ -92,6 +106,7 @@ export function App(props: AppProps): ReactElement {
       size: 1
     },
     {
+      color: "#f542e9",
       links: [
         {
           name: "storage-refrigerated"
@@ -101,6 +116,7 @@ export function App(props: AppProps): ReactElement {
       size: 1
     },
     {
+      color: "#f542e9",
       links: [
         {
           name: "storage-refrigerated"
@@ -113,6 +129,7 @@ export function App(props: AppProps): ReactElement {
       size: 1
     },
     {
+      color: "#f542e9",
       links: [
         {
           name: "butcher"
@@ -128,6 +145,7 @@ export function App(props: AppProps): ReactElement {
       size: 1
     },
     {
+      color: "#f542e9",
       links: [
         {
           name: "pen-general"
@@ -140,6 +158,7 @@ export function App(props: AppProps): ReactElement {
       size: 1
     },
     {
+      color: "#f542e9",
       links: [
         {
           name: "storage-refrigerated"
@@ -149,6 +168,7 @@ export function App(props: AppProps): ReactElement {
       size: 1
     },
     {
+      color: "#f542e9",
       links: [
         {
           name: "storage-refrigerated"
@@ -158,6 +178,7 @@ export function App(props: AppProps): ReactElement {
       size: 6
     },
     {
+      color: "#f542e9",
       links: [
         {
           name: "butcher"
@@ -185,6 +206,7 @@ export function App(props: AppProps): ReactElement {
       size: 5
     },
     {
+      color: "#f542e9",
       links: [
         {
           name: "butcher"
@@ -200,6 +222,7 @@ export function App(props: AppProps): ReactElement {
       size: 5
     },
     {
+      color: "#f542e9",
       links: [
         {
           name: "storage-unrefrigerated"
@@ -215,12 +238,12 @@ export function App(props: AppProps): ReactElement {
       className="container"
     >
       <h1>Rimworld Base Planner</h1>
-      <Base
+      <BaseView
         rooms={rooms}
         intraRoomWeight={2}
         interRoomWeight={1}
-        iterations={Math.pow(2, 14)}
-        ></Base>
+        iterations={Math.pow(2, 18)}
+        ></BaseView>
     </div>
   );
 }

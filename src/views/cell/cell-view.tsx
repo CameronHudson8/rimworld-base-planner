@@ -1,16 +1,16 @@
 import { ReactElement } from "react";
-import './Cell.css';
 
-export type CellProps = {
+export type CellViewProps = {
   coordinates: number[];
+  // room?: 
   roomName?: string;
-  setOwnProps: (cellProps: CellProps) => void;
+  setOwnProps: (cellProps: CellViewProps) => void;
   usable: boolean;
 }
 
-export type CellState = {}
+export type CellViewState = {}
 
-export function Cell(props: CellProps): ReactElement {
+export function CellView(props: CellViewProps): ReactElement {
 
   return (
     <button
