@@ -23,21 +23,31 @@ export function Base(props: BaseProps): ReactElement {
   const [isOptimizing, setIsOptimizing] = useState(false);
 
   const defaultSize = 7;
-  const savedSize = getStateFromLocalStorage<number>('size', defaultSize);
-  const [size, setSize] = useStateWithLocalStorage('size', savedSize);
-  const emptyMatrix: CellProps[][] = new Array(size).fill(undefined).map((_, i) => {
-    return new Array(size).fill(undefined).map((_, j) => ({
+  // const size = getStateFromLocalStorage<number>('size', defaultSize);
+  // const [size, setReconciledSize] = useStateWithLocalStorage('size', savedSize);
+
+  const emptyMatrix: CellProps[][] = new Array(defaultSize).fill(undefined).map((_, i) => {
+    return new Array(defaultSize).fill(undefined).map((_, j) => ({
       coordinates: [i, j],
       setOwnProps: (cellProps) => _withNewCellProps(emptyMatrix, cellProps),
       usable: false,
     }));
   });
-  const savedMatrix = reconcile(size, getStateFromLocalStorage<CellProps[][]>('matrix', emptyMatrix),  'reconciling matrix returned from getStateFromLocalStorage');
-  const [matrix, setReconciledMatrix] = useStateWithLocalStorage('matrix', savedMatrix);
+
+  const savedMatrix = getStateFromLocalStorage<CellProps[][]>('matrix', emptyMatrix);
+  const reconciledSavedMatrix = reconcile(savedMatrix.length, savedMatrix, 'reconciling matrix returned from getStateFromLocalStorage');
+
+
+  const [matrix, setReconciledMatrix] = useStateWithLocalStorage('matrix', reconciledSavedMatrix);
+  const size = reconciledSavedMatrix.length;
+  const setSize = (size: number) => {
+    const reconciledMatrix = reconcile(size, matrix, 'setting size');
+    setReconciledMatrix(reconciledMatrix);
+  };
   const setMatrix = (matrix: CellProps[][]) => {
     const reconciledMatrix = reconcile(size, matrix, 'setting matrix');
     setReconciledMatrix(reconciledMatrix);
-  }
+  };
 
   function cellsAvailable(matrix: CellProps[][]): number {
     return matrix
