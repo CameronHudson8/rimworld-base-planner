@@ -22,13 +22,25 @@ export function Base(props: BaseProps): ReactElement {
 
   const [isOptimizing, setIsOptimizing] = useState(false);
 
-  const savedSize = getStateFromLocalStorage<number>('size');
-  const [size, setSize] = useStateWithLocalStorage('size', savedSize ?? 7);
-  const savedCellProps = getStateFromLocalStorage<CellProps[][]>('cellProps');
-  const [cellProps, setCellProps] = useStateWithLocalStorage('cellProps', reconcile(size, savedCellProps));
+  const defaultSize = 7;
+  const savedSize = getStateFromLocalStorage<number>('size', defaultSize);
+  const [size, setSize] = useStateWithLocalStorage('size', savedSize);
+  const emptyMatrix: CellProps[][] = new Array(size).fill(undefined).map((_, i) => {
+    return new Array(size).fill(undefined).map((_, j) => ({
+      coordinates: [i, j],
+      setOwnProps: (cellProps) => _withNewCellProps(emptyMatrix, cellProps),
+      usable: false,
+    }));
+  });
+  const savedMatrix = reconcile(size, getStateFromLocalStorage<CellProps[][]>('matrix', emptyMatrix),  'reconciling matrix returned from getStateFromLocalStorage');
+  const [matrix, setReconciledMatrix] = useStateWithLocalStorage('matrix', savedMatrix);
+  const setMatrix = (matrix: CellProps[][]) => {
+    const reconciledMatrix = reconcile(size, matrix, 'setting matrix');
+    setReconciledMatrix(reconciledMatrix);
+  }
 
-  function cellsAvailable(cellProps: CellProps[][]): number {
-    return cellProps
+  function cellsAvailable(matrix: CellProps[][]): number {
+    return matrix
       .flat()
       .filter((cellProps) => cellProps.usable)
       .length;
@@ -40,73 +52,25 @@ export function Base(props: BaseProps): ReactElement {
       .reduce((sum, roomSize) => sum + roomSize);
   }
 
-  // setSize(newSize: number) {
-  //   setState((state) => {
-  //     if (newSize === state.size) {
-  //       return state;
-  //     }
-  //     const cellProps = state.cellProps.map((row) => {
-  //       return row.map((_cellProps) => ({ ..._cellProps }));
-  //     });
-  //     let currentSize = state.size;
-  //     while (currentSize < newSize) {
-  //       // If the current size is EVEN,
-  //       // add a row on the TOP and a column on the RIGHT.
-  //       // If the current size is even,
-  //       // add a row on the BOTTOM and a column on the LEFT.
-  //       if (currentSize % 2 === 0) {
-  //         const newRow: CellProps[] = [];
-  //         for (let i = 0; i < currentSize; i += 1) {
-  //           newRow.push({
-  //             coordinates: [],
-  //             initialUsable?: boolean;
-  //             roomName?: string;
-  //             setUsable: (usable: boolean) => void;
-  //             usable: boolean;
-  //             used: boolean;
-  //           })
-  //         }
-  //         cellProps.unshift(newRow);
-
-  //       } else {
-
-
-  //       }
-
-  //     }
-
-  //     if 
-
-
-  //     const newState = {
-  //       ...state,
-  //       size: newSize,
-  //     };
-  //     return newState
-  //   });
-  // }
-
-  function getStateFromLocalStorage<T>(localStorageKey: string): T {
+  function getStateFromLocalStorage<T>(localStorageKey: string, defaultValue: T): T {
     const valueString = localStorage.getItem(localStorageKey);
-    return valueString !== null ? JSON.parse(valueString) : undefined;
+    return valueString !== null ? JSON.parse(valueString) : defaultValue;
   }
 
-  function optimizeBaseLayout(cellProps: CellProps[][], iterations: number) {
+  function optimizeBaseLayout(originalMatrix: CellProps[][], iterations: number) {
     _validateRoomSizes(props.rooms);
     _validateRoomUniqueness(props.rooms);
     _validateLinkReciprocity(props.rooms);
-    let currentCellProps = cellProps;
-    let currentEnergy = _getEnergy(currentCellProps);
-    let globalMinimumMatrixProps = currentCellProps;
+    let currentMatrix: CellProps[][] = _cloneMatrix(originalMatrix);
+    let currentEnergy = _getEnergy(currentMatrix);
+    let globalMinimumMatrix = currentMatrix;
     let globalMinimumEnergy = currentEnergy;
 
     for (let iteration = 0; iteration < iterations; iteration += 1) {
-      // Create a near-clone of based on the existing matrix.
-
-      const candidateCellProps = _cloneBaseLayout(currentCellProps);
 
       // Swap the room assignments of 2 cells in candidateMatrix (ONLY their roomNames).
-      const usableCellProps = candidateCellProps
+      const candidateMatrix = _cloneMatrix(currentMatrix);
+      const usableCellProps = candidateMatrix
         .flat()
         .filter((cellProps) => cellProps.usable);
 
@@ -123,30 +87,27 @@ export function Base(props: BaseProps): ReactElement {
       const cell2RoomName = cell2Props.roomName;
 
       const [cell1i, cell1j] = cell1Props.coordinates;
-      cell1Props.roomName = cell2RoomName;
+      candidateMatrix[cell1i][cell1j].roomName = cell2RoomName;
       const [cell2i, cell2j] = cell2Props.coordinates;
-      cell2Props.roomName = cell1RoomName;
+      candidateMatrix[cell2i][cell2j].roomName = cell1RoomName;
 
-      const candidateEnergy = _getEnergy(candidateCellProps);
+      const candidateEnergy = _getEnergy(candidateMatrix);
       const acceptanceProbabilityThreshold = (1 - iteration / iterations);
 
       if (
         (candidateEnergy < currentEnergy)
         || (candidateEnergy > currentEnergy && Math.random() < acceptanceProbabilityThreshold)
       ) {
-        // console.log(`Energy decreased from (${currentEnergy}) to ${candidateEnergy}.`);
-        _setOneCellProps(cell1i, cell1j, cell1Props);
-        _setOneCellProps(cell2i, cell2j, cell2Props);
-        currentCellProps = candidateCellProps;
+        currentMatrix = candidateMatrix;
         currentEnergy = candidateEnergy;
       }
       if (candidateEnergy < globalMinimumEnergy) {
-        globalMinimumMatrixProps = candidateCellProps;
+        globalMinimumMatrix = candidateMatrix;
         globalMinimumEnergy = candidateEnergy;
       }
     }
-    setCellProps(globalMinimumMatrixProps);
     console.log(`Global minimum energy = ${globalMinimumEnergy}.`);
+    return globalMinimumMatrix
   }
 
   function useStateWithLocalStorage<T>(localStorageKey: string, value: T): [T, React.Dispatch<T>] {
@@ -161,7 +122,7 @@ export function Base(props: BaseProps): ReactElement {
     ];
   }
 
-  function reconcile(size: number, originalCellProps: CellProps[][]): CellProps[][] {
+  function reconcile(size: number, originalCellProps: CellProps[][], reason: string): CellProps[][] {
     const reconcilers = [
       _reconcileSize,
       _reconcileRooms,
@@ -170,7 +131,19 @@ export function Base(props: BaseProps): ReactElement {
     for (const reconciler of reconcilers) {
       reconciledCellProps = reconciler(size, reconciledCellProps);
     }
-    return _reconcileRooms(size, originalCellProps);
+    return reconciledCellProps;
+  }
+
+  function _cloneMatrix(originalMatrix: CellProps[][]): CellProps[][] {
+    const clonedMatrix = originalMatrix.map((row) => {
+      return row.map((cellProps) => ({
+        coordinates: [ ...cellProps.coordinates ],
+        roomName: cellProps.roomName,
+        setOwnProps: (cellProps: CellProps) => _withNewCellProps(clonedMatrix, cellProps),
+        usable: cellProps.usable,
+      }));
+    });
+    return clonedMatrix;
   }
 
   function _randomFromArray<T>(arr: T[]): T | undefined {
@@ -227,8 +200,7 @@ export function Base(props: BaseProps): ReactElement {
         return {
           coordinates: [Number(i), Number(j)],
           roomName,
-          // This is overwritten in render().
-          setOwnProps: (cellProps) => { },
+          setOwnProps: (cellProps: CellProps) => _withNewCellProps(originalCellPropsClean, cellProps),
           usable,
         };
       });
@@ -249,7 +221,7 @@ export function Base(props: BaseProps): ReactElement {
           coordinates: [Number(i), Number(j)],
           roomName,
           // This is overwritten in render().
-          setOwnProps: (cellProps) => { },
+          setOwnProps: (cellProps) => _withNewCellProps(newCellProps, cellProps),
           usable: originalCell.usable || false,
         };
       });
@@ -257,17 +229,81 @@ export function Base(props: BaseProps): ReactElement {
     return newCellProps;
   }
 
-  function _reconcileSize(size: number, originalCellProps: CellProps[][]): CellProps[][] {
-    return originalCellProps;
-  }
+  /**
+   * If the current matrix is too SMALL:
+   *   If the current size is EVEN,
+   *     add a row on the BOTTOM and a column on the LEFT.
+   *   If the current size is ODD,
+   *     add a row on the TOP and a column on the RIGHT.
+   * If the current matrix is too BIG:
+   *   If the current size is EVEN,
+   *     remove a row from the TOP and a column from the RIGHT.
+   *   If the current size is ODD,
+   *     remove a row from the BOTTOM and a column from the LEFT.
+   */
+  function _reconcileSize(size: number, originalMatrix: CellProps[][]): CellProps[][] {
+    const newMatrix = _cloneMatrix(originalMatrix);
 
-  function _cloneBaseLayout(originalCellProps: CellProps[][]): CellProps[][] {
-    const cloneCellProps: CellProps[][] = originalCellProps.map((row) => {
-      return row.map((cellProps) => ({
-        ...cellProps,
-      }));
-    });
-    return cloneCellProps;
+    for (let i = 0; i < size; i += 1) {
+
+      if (newMatrix.length < size) {
+        if (newMatrix.length % 2 === 0) {
+          // Add a row to the bottom.
+          newMatrix.push([]);
+        } else {
+          // Add a row to the top.
+          newMatrix.unshift([]);
+        }
+      }
+      if (newMatrix.length > size) {
+        if (newMatrix.length % 2 === 0) {
+          // Remove a row from the top.
+          newMatrix.shift();
+        } else {
+          // Remove a row from the bottom.
+          newMatrix.pop();
+        }
+      }
+
+      for (let j = 0; j < size; j += 1) {
+
+        if (newMatrix[i].length < size) {
+          if (newMatrix[i].length % 2 === 0) {
+            // Add a column on the left.
+            newMatrix[i].unshift({
+              coordinates: [i, j],
+              setOwnProps: (cellProps) => _withNewCellProps(newMatrix, cellProps),
+              usable: false,
+            });
+          } else {
+            // Add a column on the right.
+            newMatrix[i].push({
+              coordinates: [i, j],
+              setOwnProps: (cellProps) => _withNewCellProps(newMatrix, cellProps),
+              usable: false,
+            });
+          }
+        }
+        if (newMatrix[i].length > size) {
+          if (newMatrix[i].length % 2 === 0) {
+            // Remove a column from the right.
+            newMatrix[i].pop();
+          } else {
+            // Remove a column from the left.
+            newMatrix[i].shift();
+          }
+        }
+
+        newMatrix[i][j] = {
+          coordinates: [i, j],
+          roomName: newMatrix[i][j].roomName,
+          setOwnProps: (cellProps) => _withNewCellProps(newMatrix, cellProps),
+          usable: newMatrix[i][j].usable,
+        };
+
+      }
+    }
+    return newMatrix;
   }
 
   function _getDistance(cellProps1: CellProps, cellProps2: CellProps): number {
@@ -322,19 +358,19 @@ export function Base(props: BaseProps): ReactElement {
     return energy;
   }
 
-  function _setOneCellProps(i: number, j: number, changedCellProps: CellProps) {
-    const newCellProps = cellProps.map((row, rowNum) => {
-      return row.map((_cellProps, colNum) => ({
-        ..._cellProps,
+  function _withNewCellProps(originalMatrix: CellProps[][], newCellProps: CellProps) {
+    const [i, j] = newCellProps.coordinates;
+    const newMatrix = originalMatrix.map((row, rowNum) => {
+      return row.map((cellProps, colNum) => ({
+        ...cellProps,
         ...(
           rowNum === i && colNum === j
-            ? changedCellProps
+            ? newCellProps
             : {}
         ),
       }));
     });
-    const reconciledCellProps = reconcile(size, newCellProps);
-    setCellProps(reconciledCellProps);
+    return newMatrix;
   }
 
   function _validateRoomSizes(rooms: RoomProps[]) {
@@ -375,19 +411,21 @@ export function Base(props: BaseProps): ReactElement {
       <div className="size-input">
         <p>Size</p>
         <input
-          disabled={true}
-          // onChange={(event) => {
-          //   if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
-          //     setSize(Number(event.target.value));
-          //   }
-          // }}
+          disabled={isOptimizing}
+          max={16}
+          min={1}
+          onChange={(event) => {
+            if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
+              setSize(Number(event.target.value));
+            }
+          }}
           type="number"
           value={size}
         />
       </div>
       <div className="cell-grid" >
         {
-          cellProps.map((row, i) => (
+          matrix.map((row, i) => (
             <div
               className="cell-row"
               key={String(i)}
@@ -397,7 +435,10 @@ export function Base(props: BaseProps): ReactElement {
                   return (
                     <Cell
                       {...cellProps}
-                      setOwnProps={(cellProps) => _setOneCellProps(i, j, cellProps)}
+                      setOwnProps={(cellProps) => {
+                        const newMatrix = _withNewCellProps(matrix, cellProps);
+                        setMatrix(newMatrix);
+                      }}
                       key={j}
                     />
                   );
@@ -408,11 +449,11 @@ export function Base(props: BaseProps): ReactElement {
         }
       </div>
       {
-        (cellsAvailable(cellProps) < cellsNeeded())
+        (cellsAvailable(matrix) < cellsNeeded())
         && (
           <p className="error">
             Cells needed: {cellsNeeded()}.
-            Cells available: {cellsAvailable(cellProps)}.
+            Cells available: {cellsAvailable(matrix)}.
             Please reduce room sizes or enable more cells.
           </p>
         )
@@ -421,12 +462,17 @@ export function Base(props: BaseProps): ReactElement {
       <button
         // className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
         disabled={
-          (cellsAvailable(cellProps) < cellsNeeded())
+          (cellsAvailable(matrix) < cellsNeeded())
           || isOptimizing
         }
         onClick={(event) => {
           setIsOptimizing(true);
-          optimizeBaseLayout(cellProps, props.iterations);
+          try {
+            const newMatrix = optimizeBaseLayout(matrix, props.iterations);
+            setMatrix(newMatrix);
+          } catch (err) {
+            console.error(err);
+          }
           setIsOptimizing(false);
         }}
       >

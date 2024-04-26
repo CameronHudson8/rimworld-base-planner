@@ -4,11 +4,11 @@
 
 .cell-grid {
   display: flex;
+  flex-direction: column;
 }
 
 .cell-row {
   display: flex;
-  flex-direction: column;
 }
 
 .size-input {
