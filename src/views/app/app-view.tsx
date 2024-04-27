@@ -13,9 +13,10 @@ export function AppView(props: AppViewProps): ReactElement {
     >
       <h1>Rimworld Base Planner</h1>
       <BaseView
+        centerOfMassWeight={0.5}
         intraRoomWeight={2}
         interRoomWeight={1}
-        iterations={Math.pow(2, 18)}
+        iterations={Math.pow(2, 14)}
         ></BaseView>
     </div>
   );

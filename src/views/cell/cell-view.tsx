@@ -1,10 +1,11 @@
 import { ReactElement } from "react";
+import { Cell } from "../../models";
 
 export type CellViewProps = {
   coordinates: number[];
   color?: string;
   roomName?: string;
-  setOwnProps: (cellProps: CellViewProps) => void;
+  updateSelf: (cell: Cell) => void;
   usable: boolean;
 }
 
@@ -15,11 +16,14 @@ export function CellView(props: CellViewProps): ReactElement {
   return (
     <button
       className={`cell ${!props.usable && "cell-unusable"}`}
-      onClick={() => props.setOwnProps({
+      onClick={() => props.updateSelf({
         ...props,
         usable: !props.usable,
       })}
-      style={{ backgroundColor: props.color }}
+      style={{
+        backgroundColor: props.color,
+        textOverflow: 'ellipsis',
+      }}
     >
       {String(props.roomName || '')}
     </button >

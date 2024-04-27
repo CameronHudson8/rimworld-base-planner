@@ -1,6 +1,7 @@
 .cell {
-  height: 8vmin;
-  width: 8vmin;
+  height: 60px;
+  width: 60px;
+  font-size: 0.70em;
 }
 
 .cell:hover {

@@ -2,11 +2,14 @@ import { ReactElement, useState } from "react";
 
 import {
   CellView,
-  CellViewProps,
 } from '../cell';
+import {
+  Cell
+} from '../../models/cell';
 import { RoomViewProps } from '../room';
 
 export type BaseViewProps = {
+  centerOfMassWeight: number;
   intraRoomWeight: number;
   interRoomWeight: number;
   iterations: number;
@@ -25,10 +28,22 @@ export class NotEnoughSpaceError extends Error {
 
 export function BaseView(props: BaseViewProps): ReactElement {
 
+  function createId(): string {
+    return Array.from(crypto.getRandomValues(new Uint8Array(4)))
+      .map((idPart) => {
+        let idPartString = String(idPart);
+        while (idPartString.length < Uint8Array.length) {
+          idPartString = `0${idPartString}`;
+        }
+        return idPartString;
+      })
+      .join('');
+  }
+
   const defaultRooms: RoomViewProps[] = [
     {
       color: "#ff7373",
-      id: String(crypto.getRandomValues(new Uint8Array(8))),
+      id: createId(),
       links: [
         {
           name: 'storage',
@@ -39,7 +54,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
     },
     {
       color: "#fc8332",
-      id: String(crypto.getRandomValues(new Uint8Array(8))),
+      id: createId(),
       links: [
         {
           name: 'kitchen',
@@ -50,34 +65,35 @@ export function BaseView(props: BaseViewProps): ReactElement {
     },
     {
       color: "#048a49",
-      id: String(crypto.getRandomValues(new Uint8Array(8))),
+      id: createId(),
       links: [],
       name: "bedroom 1",
       size: 1
     },
   ];
 
-  const savedRoomsWithoutIds = getStateFromLocalStorage<RoomViewProps[]>('rooms', defaultRooms);
-  const savedRooms: RoomViewProps[] = savedRoomsWithoutIds.map((room) => ({
-    ...room,
-    id: String(crypto.getRandomValues(new Uint8Array(8))),
-  }));
-
-  const [rooms, setRooms] = useStateWithLocalStorage('rooms', savedRooms);
+  const savedRooms = getStateFromLocalStorage<RoomViewProps[]>('rooms', defaultRooms);
+  const reconciledSavedRooms = _reconcileRoomLinks(savedRooms);
+  const [rooms, setRoomsBeforeReconcilingMatrix] = useStateWithLocalStorage('rooms', reconciledSavedRooms);
+  const setRooms = (rooms: RoomViewProps[]) => {
+    // TODO somehow refactor this so that there is no state overlap between the rooms and the matrix.
+    setRoomsBeforeReconcilingMatrix(rooms);
+    const reconciledMatrix = reconcile(size, matrix, rooms, 'after updating rooms');
+    setReconciledMatrix(reconciledMatrix);
+  };
 
   const [isOptimizing, setIsOptimizing] = useState(false);
 
   const defaultSize = 7;
 
-  const emptyMatrix: CellViewProps[][] = new Array(defaultSize).fill(undefined).map((_, i) => {
+  const emptyMatrix: Cell[][] = new Array(defaultSize).fill(undefined).map((_, i) => {
     return new Array(defaultSize).fill(undefined).map((_, j) => ({
       coordinates: [i, j],
-      setOwnProps: (cellProps) => _withNewCellProps(emptyMatrix, cellProps),
       usable: false,
     }));
   });
 
-  const savedMatrix = getStateFromLocalStorage<CellViewProps[][]>('matrix', emptyMatrix);
+  const savedMatrix = getStateFromLocalStorage<Cell[][]>('matrix', emptyMatrix);
   const reconciledSavedMatrix = reconcile(savedMatrix.length, savedMatrix, rooms, 'reconciling matrix returned from getStateFromLocalStorage');
 
   const [matrix, setReconciledMatrix] = useStateWithLocalStorage('matrix', reconciledSavedMatrix);
@@ -86,15 +102,15 @@ export function BaseView(props: BaseViewProps): ReactElement {
     const reconciledMatrix = reconcile(size, matrix, rooms, 'setting size');
     setReconciledMatrix(reconciledMatrix);
   };
-  const setMatrix = (matrix: CellViewProps[][]) => {
+  const setMatrix = (matrix: Cell[][]) => {
     const reconciledMatrix = reconcile(size, matrix, rooms, 'setting matrix');
     setReconciledMatrix(reconciledMatrix);
   };
 
-  function cellsAvailable(matrix: CellViewProps[][]): number {
+  function cellsAvailable(matrix: Cell[][]): number {
     return matrix
       .flat()
-      .filter((cellProps) => cellProps.usable)
+      .filter((cell) => cell.usable)
       .length;
   }
 
@@ -109,39 +125,38 @@ export function BaseView(props: BaseViewProps): ReactElement {
     return valueString !== null ? JSON.parse(valueString) : defaultValue;
   }
 
-  function optimizeBaseLayout(originalMatrix: CellViewProps[][], iterations: number) {
+  function optimizeBaseLayout(originalMatrix: Cell[][], iterations: number) {
     _validateRoomSizes(rooms);
-    _validateRoomUniqueness(rooms);
     _validateLinkReciprocity(rooms);
-    let currentMatrix: CellViewProps[][] = _cloneMatrix(originalMatrix);
+    let currentMatrix: Cell[][] = _cloneMatrix(originalMatrix);
     let currentEnergy = _getEnergy(currentMatrix);
     let globalMinimumMatrix = currentMatrix;
     let globalMinimumEnergy = currentEnergy;
 
     for (let iteration = 0; iteration < iterations; iteration += 1) {
 
-      // Swap the room assignments of 2 cells in candidateMatrix (ONLY their roomNames).
+      // Swap the room assignments of 2 cells in candidateMatrix (ONLY their roomIds).
       const candidateMatrix = _cloneMatrix(currentMatrix);
-      const usableCellProps = candidateMatrix
+      const usableCells = candidateMatrix
         .flat()
-        .filter((cellProps) => cellProps.usable);
+        .filter((cell) => cell.usable);
 
-      const cell1Props = _randomFromArray(usableCellProps);
-      if (!cell1Props) {
-        throw new Error(`Random selection from array unexpectedly returned undefined. Is the array usableCellProps empty? (length = ${usableCellProps?.length}).`);
+      const cell1 = _randomFromArray(usableCells);
+      if (!cell1) {
+        throw new Error(`Random selection from array unexpectedly returned undefined. Is the array usableCells empty? (length = ${usableCells?.length}).`);
       }
-      const cellsInOtherRoomsProps = usableCellProps.filter((cellProps) => cellProps.roomName !== cell1Props.roomName);
-      const cell2Props = _randomFromArray(cellsInOtherRoomsProps);
-      if (!cell2Props) {
-        throw new Error(`Random selection from array unexpectedly returned undefined. Is the array cellsInOtherRoomsProps empty? (length = ${cellsInOtherRoomsProps.length}).`);
+      const cellsInOtherRooms = usableCells.filter((cells) => cells.roomId !== cell1.roomId);
+      const cell2 = _randomFromArray(cellsInOtherRooms);
+      if (!cell2) {
+        throw new Error(`Random selection from array unexpectedly returned undefined. Is the array cellsInOtherRooms empty? (length = ${cellsInOtherRooms.length}).`);
       }
-      const cell1RoomName = cell1Props.roomName;
-      const cell2RoomName = cell2Props.roomName;
+      const cell1RoomId = cell1.roomId;
+      const cell2RoomId = cell2.roomId;
 
-      const [cell1i, cell1j] = cell1Props.coordinates;
-      candidateMatrix[cell1i][cell1j].roomName = cell2RoomName;
-      const [cell2i, cell2j] = cell2Props.coordinates;
-      candidateMatrix[cell2i][cell2j].roomName = cell1RoomName;
+      const [cell1i, cell1j] = cell1.coordinates;
+      candidateMatrix[cell1i][cell1j].roomId = cell2RoomId;
+      const [cell2i, cell2j] = cell2.coordinates;
+      candidateMatrix[cell2i][cell2j].roomId = cell1RoomId;
 
       const candidateEnergy = _getEnergy(candidateMatrix);
       const acceptanceProbabilityThreshold = (1 - iteration / iterations);
@@ -174,7 +189,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
     ];
   }
 
-  function reconcile(newSize: number, newMatrix: CellViewProps[][], newRooms: RoomViewProps[], reason: string): CellViewProps[][] {
+  function reconcile(newSize: number, newMatrix: Cell[][], newRooms: RoomViewProps[], reason: string): Cell[][] {
     const reconcilers = [
       _reconcileSize,
       _reconcileRooms,
@@ -186,13 +201,12 @@ export function BaseView(props: BaseViewProps): ReactElement {
     return reconciledMatrix;
   }
 
-  function _cloneMatrix(originalMatrix: CellViewProps[][]): CellViewProps[][] {
+  function _cloneMatrix(originalMatrix: Cell[][]): Cell[][] {
     const clonedMatrix = originalMatrix.map((row) => {
-      return row.map((cellProps) => ({
-        coordinates: [...cellProps.coordinates],
-        roomName: cellProps.roomName,
-        setOwnProps: (cellProps: CellViewProps) => _withNewCellProps(clonedMatrix, cellProps),
-        usable: cellProps.usable,
+      return row.map((cell) => new Cell({
+        coordinates: [...cell.coordinates],
+        roomId: cell.roomId,
+        usable: cell.usable,
       }));
     });
     return clonedMatrix;
@@ -219,15 +233,29 @@ export function BaseView(props: BaseViewProps): ReactElement {
     return choice;
   }
 
-  function _reconcileRooms(newSize: number, newMatrixOriginal: CellViewProps[][], newRooms: RoomViewProps[]): CellViewProps[][] {
-    const roomSizesRemaining: { [roomName: string]: number } = newRooms.reduce(
+  function _reconcileRoomLinks(rooms: RoomViewProps[]): RoomViewProps[] {
+    return rooms.map((room) => ({
+      ...room,
+      links: [
+        ...room.links.filter((link) => {
+          const otherRoom = rooms.find((otherRoom) => otherRoom.name === link.name);
+          return otherRoom?.links
+            .map((otherRoomLink) => otherRoomLink.name)
+            .includes(room.name);
+        }),
+      ],
+    }));
+  }
+
+  function _reconcileRooms(newSize: number, newMatrixOriginal: Cell[][], newRooms: RoomViewProps[]): Cell[][] {
+    const roomSizesRemaining: { [roomId: string]: number } = newRooms.reduce(
       (roomSizesRemaining, room) => ({
         ...roomSizesRemaining,
-        [room.name]: room.size,
+        [room.id]: room.size,
       }),
       {}
     );
-    const originalCellPropsClean: CellViewProps[][] = new Array(newSize).fill(undefined).map((_, i) => {
+    const originalCellsClean: Cell[][] = new Array(newSize).fill(undefined).map((_, i) => {
       return new Array(newSize).fill(undefined).map((_, j) => {
         const originalCell = (
           i in newMatrixOriginal
@@ -238,50 +266,44 @@ export function BaseView(props: BaseViewProps): ReactElement {
             : undefined
         );
         const usable = originalCell?.usable ? true : false;
-        const roomName =
+        const roomId =
           !usable
             ? undefined
-            : originalCell?.roomName
-              && originalCell.roomName in roomSizesRemaining
-              && roomSizesRemaining[originalCell.roomName] > 0
-              ? originalCell.roomName
+            : originalCell?.roomId
+              && originalCell.roomId in roomSizesRemaining
+              && roomSizesRemaining[originalCell.roomId] > 0
+              ? originalCell.roomId
               : undefined;
-        if (roomName) {
-          roomSizesRemaining[roomName] -= 1;
+        if (roomId) {
+          roomSizesRemaining[roomId] -= 1;
         }
         return {
           coordinates: [Number(i), Number(j)],
-          roomName,
-          setOwnProps: (cellProps: CellViewProps) => _withNewCellProps(originalCellPropsClean, cellProps),
+          roomId,
           usable,
         };
       });
     });
-    const newCellProps: CellViewProps[][] = new Array(newSize).fill(undefined).map((_, i) => {
+    const newMatrix: Cell[][] = new Array(newSize).fill(undefined).map((_, i) => {
       return new Array(newSize).fill(undefined).map((_, j) => {
-        const originalCell = originalCellPropsClean[i][j];
-        const roomName =
+        const originalCell = originalCellsClean[i][j];
+        const roomId =
           !originalCell.usable
             ? undefined
-            : originalCell.roomName
-              ? originalCell.roomName
+            : originalCell.roomId
+              ? originalCell.roomId
               : _randomFromObject(roomSizesRemaining);
-        if (!originalCell.roomName && roomName) {
-          roomSizesRemaining[roomName] -= 1;
+        if (!originalCell.roomId && roomId) {
+          roomSizesRemaining[roomId] -= 1;
         }
-        const room = newRooms.find((room) => room.name === roomName);
-        const color = room?.color;
         return {
-          color,
           coordinates: [Number(i), Number(j)],
-          roomName,
-          // This is overwritten in render().
-          setOwnProps: (cellProps) => _withNewCellProps(newCellProps, cellProps),
+          roomId,
           usable: originalCell.usable || false,
         };
       });
     });
-    return newCellProps;
+    return newMatrix;
   }
 
   /**
@@ -296,7 +318,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
    *   If the current size is ODD,
    *     remove a row from the BOTTOM and a column from the LEFT.
    */
-  function _reconcileSize(newSize: number, newMatrixOriginal: CellViewProps[][], _: RoomViewProps[]): CellViewProps[][] {
+  function _reconcileSize(newSize: number, newMatrixOriginal: Cell[][], _: RoomViewProps[]): Cell[][] {
     const newMatrix = _cloneMatrix(newMatrixOriginal);
 
     for (let i = 0; i < newSize; i += 1) {
@@ -325,18 +347,16 @@ export function BaseView(props: BaseViewProps): ReactElement {
         if (newMatrix[i].length < newSize) {
           if (newMatrix[i].length % 2 === 0) {
             // Add a column on the left.
-            newMatrix[i].unshift({
+            newMatrix[i].unshift(new Cell({
               coordinates: [i, j],
-              setOwnProps: (cellProps) => _withNewCellProps(newMatrix, cellProps),
               usable: false,
-            });
+            }));
           } else {
             // Add a column on the right.
-            newMatrix[i].push({
+            newMatrix[i].push(new Cell({
               coordinates: [i, j],
-              setOwnProps: (cellProps) => _withNewCellProps(newMatrix, cellProps),
               usable: false,
-            });
+            }));
           }
         }
         if (newMatrix[i].length > newSize) {
@@ -351,8 +371,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
 
         newMatrix[i][j] = {
           coordinates: [i, j],
-          roomName: newMatrix[i][j].roomName,
-          setOwnProps: (cellProps) => _withNewCellProps(newMatrix, cellProps),
+          roomId: newMatrix[i][j].roomId,
           usable: newMatrix[i][j].usable,
         };
 
@@ -361,51 +380,67 @@ export function BaseView(props: BaseViewProps): ReactElement {
     return newMatrix;
   }
 
-  function _getDistance(cellProps1: CellViewProps, cellProps2: CellViewProps): number {
-    if (cellProps1.coordinates.length !== cellProps2.coordinates.length) {
-      throw new Error(`Cell with coordinates ${cellProps1.coordinates} has ${cellProps1.coordinates.length} coordinates, but cell with coordinates ${cellProps1.coordinates} has ${cellProps2.coordinates.length} coordinates.`);
+  function _getDistance(cell1: Cell, cell2: Cell): number {
+    if (cell1.coordinates.length !== cell2.coordinates.length) {
+      throw new Error(`Cell with coordinates ${cell1.coordinates} has ${cell1.coordinates.length} coordinates, but cell with coordinates ${cell1.coordinates} has ${cell2.coordinates.length} coordinates.`);
     }
     let distance = 0;
-    for (let coord in cellProps1.coordinates) {
-      distance += Math.abs(cellProps1.coordinates[coord] - cellProps2.coordinates[coord]);
+    for (let coord in cell1.coordinates) {
+      distance += Math.abs(cell1.coordinates[coord] - cell2.coordinates[coord]);
     }
     return distance;
   }
 
-  function _getEnergy(matrix: CellViewProps[][]): number {
-    const cellProps = matrix.flat();
-    const energy = cellProps
-      .map((_cellProps) => {
-        if (!_cellProps.roomName) {
+  function _getEnergy(matrix: Cell[][]): number {
+    const cells = matrix.flat();
+    const energy = cells
+      .map((cell) => {
+        if (!cell.roomId) {
           return 0;
         }
-        const room = rooms.find((room) => room.name === _cellProps.roomName);
+        const room = rooms.find((room) => room.id === cell.roomId);
         if (!room) {
-          throw new Error(`Somehow a cell has room name ${_cellProps.roomName}, but there is no such room.`);
+          throw new Error(`Somehow a cell has room name ${cell.roomId}, but there is no such room.`);
         }
-        const sameRoomCells = cellProps.filter((otherCellProps) => {
-          return otherCellProps !== _cellProps
-            && otherCellProps.roomName === _cellProps.roomName;
+
+        const allOtherCells = cells.filter((otherCell) => otherCell !== cell);
+
+        const sameRoomCells = cells.filter((otherCell) => {
+          return otherCell !== cell
+            && otherCell.roomId === cell.roomId;
         });
         const linkedRoomNames = room.links.map((link) => link.name);
-        const linkedRoomCells = cellProps.filter((otherCellProps) => {
-          return otherCellProps.roomName && linkedRoomNames.includes(otherCellProps.roomName);
-        });
+        const linkedRoomCells = cells
+          .filter((linkedRoomCell) => {
+
+            const linkedRoomIds = linkedRoomNames.map((linkedRoomName) => {
+              const linkedRoom = rooms.find((room) => room.name === linkedRoomName);
+              if (!linkedRoom) {
+                throw new Error(`There is a link to a room with name ${linkedRoomName}, but there is no such room.`);
+              }
+              return linkedRoom.id;
+            });
+
+            return linkedRoomCell.roomId && linkedRoomIds.includes(linkedRoomCell.roomId);
+          });
 
         const [
+          centerOfMassEnergy,
           intraRoomEnergy,
           interRoomEnergy,
         ] = [
+          allOtherCells,
           sameRoomCells,
           linkedRoomCells,
         ]
           .map((otherCells) => otherCells
-            .map((otherCell) => _getDistance(_cellProps, otherCell))
+            .map((otherCell) => _getDistance(cell, otherCell))
             .map((distance) => Math.pow(distance, 2))
             .reduce((sum, energy) => sum + energy, 0)
           );
         const energy =
-          Math.pow(intraRoomEnergy, props.intraRoomWeight)
+          Math.pow(centerOfMassEnergy, props.centerOfMassWeight)
+          + Math.pow(intraRoomEnergy, props.intraRoomWeight)
           + Math.pow(interRoomEnergy, props.interRoomWeight);
         return energy;
       })
@@ -413,14 +448,20 @@ export function BaseView(props: BaseViewProps): ReactElement {
     return energy;
   }
 
-  function _withNewCellProps(originalMatrix: CellViewProps[][], newCellProps: CellViewProps) {
-    const [i, j] = newCellProps.coordinates;
+  function _randomColor(): string {
+    const colorsHex = Array.from(crypto.getRandomValues(new Uint8Array(3)))
+      .map((color) => Number(color).toString(16));
+    return `#${colorsHex.join('')}`;
+  }
+
+  function _withUpdatedCell(originalMatrix: Cell[][], updatedCell: Cell) {
+    const [i, j] = updatedCell.coordinates;
     const newMatrix = originalMatrix.map((row, rowNum) => {
-      return row.map((cellProps, colNum) => ({
-        ...cellProps,
+      return row.map((cell, colNum) => ({
+        ...cell,
         ...(
           rowNum === i && colNum === j
-            ? newCellProps
+            ? updatedCell
             : {}
         ),
       }));
@@ -436,14 +477,9 @@ export function BaseView(props: BaseViewProps): ReactElement {
     }
   }
 
-  function _validateRoomUniqueness(rooms: RoomViewProps[]) {
-    const uniqueRoomNames = new Set();
-    for (const room of rooms) {
-      if (uniqueRoomNames.has(room.name)) {
-        throw new Error(`Multiple rooms have the name '${room.name}'.`);
-      }
-      uniqueRoomNames.add(room.name);
-    }
+  function _roomNameIsUnique(roomName: string): boolean {
+    const existingRoomNames = new Set(rooms.map((room) => room.name));
+    return !existingRoomNames.has(roomName);
   }
 
   function _validateLinkReciprocity(rooms: RoomViewProps[]) {
@@ -472,15 +508,21 @@ export function BaseView(props: BaseViewProps): ReactElement {
               key={String(i)}
             >
               {
-                row.map((cellProps, j) => {
+                row.map((cell, j) => {
+                  const room = rooms.find((room) => room.id === cell.roomId);
+                  const roomName = room?.name;
+                  const color = room?.color;
                   return (
                     <CellView
-                      {...cellProps}
-                      setOwnProps={(cellProps: CellViewProps) => {
-                        const newMatrix = _withNewCellProps(matrix, cellProps);
+                      color={color}
+                      coordinates={cell.coordinates}
+                      key={j}
+                      roomName={roomName}
+                      updateSelf={(cell: Cell) => {
+                        const newMatrix = _withUpdatedCell(matrix, cell);
                         setMatrix(newMatrix);
                       }}
-                      key={j}
+                      usable={cell.usable}
                     />
                   );
                 })
@@ -556,11 +598,15 @@ export function BaseView(props: BaseViewProps): ReactElement {
                   disabled={isOptimizing}
                   id={`room-${r}-name`}
                   onChange={(event) => {
+                    const newRoomName = event.target.value;
+                    if (!_roomNameIsUnique(newRoomName)) {
+                      throw new Error(`A room with name ${newRoomName} already exists.`);
+                    }
                     setRooms([
                       ...rooms.slice(0, r),
                       {
                         ...rooms[r],
-                        name: event.target.value,
+                        name: newRoomName,
                       },
                       ...rooms.slice(r + 1, rooms.length),
                     ]);
@@ -579,9 +625,17 @@ export function BaseView(props: BaseViewProps): ReactElement {
                   max={16}
                   min={1}
                   onChange={(event) => {
-                    // if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
-                    //   setSize(Number(event.target.value));
-                    // }
+                    const newRoomSize = Number(event.target.value);
+                    if (newRoomSize >= Number(event.target.min) && newRoomSize <= Number(event.target.max)) {
+                      setRooms([
+                        ...rooms.slice(0, r),
+                        {
+                          ...rooms[r],
+                          size: newRoomSize,
+                        },
+                        ...rooms.slice(r + 1, rooms.length),
+                      ]);
+                    }
                   }}
                   type="number"
                   value={room.size}
@@ -595,9 +649,15 @@ export function BaseView(props: BaseViewProps): ReactElement {
                   disabled={isOptimizing}
                   id={`room-${r}-color`}
                   onChange={(event) => {
-                    // if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
-                    //   setSize(Number(event.target.value));
-                    // }
+                    const newColor = event.target.value;
+                    setRooms([
+                      ...rooms.slice(0, r),
+                      {
+                        ...rooms[r],
+                        color: newColor,
+                      },
+                      ...rooms.slice(r + 1, rooms.length),
+                    ]);
                   }}
                   type="color"
                   value={room.color}
@@ -628,9 +688,43 @@ export function BaseView(props: BaseViewProps): ReactElement {
                             disabled={isOptimizing}
                             id={`room-${r}-link-${l}-name`}
                             onChange={(event) => {
-                              // if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
-                              //   setSize(Number(event.target.value));
-                              // }
+                              const oldLinkName = link.name;
+                              const newLinkName = event.target.value;
+                              setRooms(
+                                rooms.map((otherRoom) => {
+                                  if (otherRoom === room) {
+                                    return {
+                                      ...room,
+                                      links: [
+                                        ...room.links.slice(0, l),
+                                        {
+                                          ...room.links[l],
+                                          name: newLinkName,
+                                        },
+                                        ...room.links.slice(l + 1, room.links.length),
+                                      ],
+                                    };
+                                  }
+                                  if (otherRoom.name === oldLinkName) {
+                                    return {
+                                      ...otherRoom,
+                                      links: otherRoom.links.filter((link) => link.name !== room.name),
+                                    };
+                                  }
+                                  if (otherRoom.name === newLinkName) {
+                                    return {
+                                      ...otherRoom,
+                                      links: [
+                                        ...otherRoom.links,
+                                        {
+                                          name: room.name,
+                                        },
+                                      ],
+                                    };
+                                  }
+                                  return { ...otherRoom };
+                                })
+                              )
                             }}
                             value={link.name}
                           >
@@ -653,7 +747,28 @@ export function BaseView(props: BaseViewProps): ReactElement {
                           className="labeled-element"
                         >
                           <label htmlFor="link-delete">Delete Link</label>
-                          <button id="link-delete">
+                          <button
+                            id="link-delete"
+                            onClick={(_) => {
+                              setRooms(
+                                rooms.map((otherRoom) => {
+                                  if (otherRoom === room) {
+                                    return {
+                                      ...room,
+                                      links: room.links.filter((otherLink) => otherLink.name !== link.name),
+                                    };
+                                  }
+                                  if (otherRoom.name === link.name) {
+                                    return {
+                                      ...otherRoom,
+                                      links: otherRoom.links.filter((otherLink) => otherLink.name !== room.name),
+                                    };
+                                  }
+                                  return { ...otherRoom };
+                                })
+                              );
+                            }}
+                          >
                             -
                           </button>
                         </div>
@@ -664,7 +779,54 @@ export function BaseView(props: BaseViewProps): ReactElement {
                     className="labeled-element"
                   >
                     <label htmlFor="link-add">Add Link</label>
-                    <button id="link-add">
+                    <button
+                      id="link-add"
+                      onClick={(_) => {
+                        if (rooms.length < 2) {
+                          throw new Error(`There are only ${rooms.length} room(s); not enough to link to another one.`);
+                        }
+                        const linkableRooms = rooms
+                          .filter((otherRoom) =>
+                            otherRoom !== room
+                            && !room.links
+                              .map((link) => link.name)
+                              .includes(otherRoom.name)
+                          )
+                        if (linkableRooms.length < 1) {
+                          throw new Error(`There are no other rooms to which this room can be linked.`);
+                        }
+                        const otherRoom = linkableRooms.find(() => true);
+                        if (!otherRoom) {
+                          throw new Error(`Somehow 'linkableRooms' contained a falsy element.`);
+                        }
+                        const otherRoomIndex = rooms.indexOf(otherRoom);
+                        const r1 = Math.min(r, otherRoomIndex);
+                        const r2 = Math.max(r, otherRoomIndex);
+                        setRooms([
+                          ...rooms.slice(0, r1),
+                          {
+                            ...rooms[r1],
+                            links: [
+                              ...rooms[r1].links,
+                              {
+                                name: rooms[r2].name,
+                              },
+                            ],
+                          },
+                          ...rooms.slice(r1 + 1, r2),
+                          {
+                            ...rooms[r2],
+                            links: [
+                              ...rooms[r2].links,
+                              {
+                                name: rooms[r1].name,
+                              },
+                            ],
+                          },
+                          ...rooms.slice(r2 + 1, rooms.length),
+                        ]);
+                      }}
+                    >
                       +
                     </button>
                   </div>
@@ -682,7 +844,19 @@ export function BaseView(props: BaseViewProps): ReactElement {
                   className="labeled-element"
                 >
                   <label htmlFor="room-delete">Delete Room</label>
-                  <button id="room-delete">
+                  <button
+                    id="room-delete"
+                    onClick={(_) => {
+                      setRooms(
+                        rooms
+                          .filter((otherRoom) => otherRoom !== room)
+                          .map((otherRoom) => ({
+                            ...otherRoom,
+                            links: otherRoom.links.filter((link) => link.name !== room.name)
+                          }))
+                      );
+                    }}
+                  >
                     -
                   </button>
                 </div>
@@ -694,7 +868,21 @@ export function BaseView(props: BaseViewProps): ReactElement {
           className="labeled-element"
         >
           <label htmlFor="room-add">Add Room</label>
-          <button id="room-add">
+          <button
+            id="room-add"
+            onClick={(_) => {
+              setRooms([
+                ...rooms,
+                {
+                  color: _randomColor(),
+                  id: createId(),
+                  links: [],
+                  name: '',
+                  size: 1,
+                }
+              ]);
+            }}
+          >
             +
           </button>
         </div>
