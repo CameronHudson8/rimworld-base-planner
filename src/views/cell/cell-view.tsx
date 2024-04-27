@@ -2,7 +2,7 @@ import { ReactElement } from "react";
 
 export type CellViewProps = {
   coordinates: number[];
-  // room?: 
+  color?: string;
   roomName?: string;
   setOwnProps: (cellProps: CellViewProps) => void;
   usable: boolean;
@@ -14,11 +14,12 @@ export function CellView(props: CellViewProps): ReactElement {
 
   return (
     <button
-      className={`cell ${props.usable ? "cell-usable" : "cell-unusable"}`}
+      className={`cell ${!props.usable && "cell-unusable"}`}
       onClick={() => props.setOwnProps({
         ...props,
         usable: !props.usable,
       })}
+      style={{ backgroundColor: props.color }}
     >
       {String(props.roomName || '')}
     </button >

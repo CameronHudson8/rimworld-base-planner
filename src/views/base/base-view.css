@@ -11,6 +11,34 @@
   display: flex;
 }
 
-.size-input {
+.card {
+  background-color: lightgrey;
+  /* box-shadow: <offset-x> <offset-y> <blur-radius> <spread-radius> <color>; */
+  box-shadow: 0.5vmin 0.5vmin 0.5vmin 0vmin gray;
+  margin-bottom: 2vmin;
+  padding: 1vmin;
+}
+
+.labeled-element {
+  align-items: flex-start;
   display: flex;
+  flex-direction: column;
+  margin-bottom: 1vmin;
+  margin-right: 1vmin;
+}
+
+.flexbox-row {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+}
+
+.flexbox-column {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+}
+
+li {
+  margin-bottom: 1vmin;
 }

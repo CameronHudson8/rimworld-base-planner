@@ -2,6 +2,7 @@ import { ReactElement } from "react";
 
 export type RoomViewProps = {
   color: string;
+  id: string;
   links: { name: string }[];
   name: string;
   size: number;

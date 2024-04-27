@@ -7,13 +7,14 @@ import {
 import { RoomViewProps } from '../room';
 
 export type BaseViewProps = {
-  rooms: RoomViewProps[];
   intraRoomWeight: number;
   interRoomWeight: number;
   iterations: number;
 }
 
-export type BaseViewState = {}
+export type BaseViewState = {
+  rooms: RoomViewProps[];
+}
 
 export class NotEnoughSpaceError extends Error {
   constructor(cellsAvailable: number, cellsNeeded: number) {
@@ -23,6 +24,46 @@ export class NotEnoughSpaceError extends Error {
 }
 
 export function BaseView(props: BaseViewProps): ReactElement {
+
+  const defaultRooms: RoomViewProps[] = [
+    {
+      color: "#ff7373",
+      id: String(crypto.getRandomValues(new Uint8Array(8))),
+      links: [
+        {
+          name: 'storage',
+        },
+      ],
+      name: "kitchen",
+      size: 1
+    },
+    {
+      color: "#fc8332",
+      id: String(crypto.getRandomValues(new Uint8Array(8))),
+      links: [
+        {
+          name: 'kitchen',
+        },
+      ],
+      name: "storage",
+      size: 1
+    },
+    {
+      color: "#048a49",
+      id: String(crypto.getRandomValues(new Uint8Array(8))),
+      links: [],
+      name: "bedroom 1",
+      size: 1
+    },
+  ];
+
+  const savedRoomsWithoutIds = getStateFromLocalStorage<RoomViewProps[]>('rooms', defaultRooms);
+  const savedRooms: RoomViewProps[] = savedRoomsWithoutIds.map((room) => ({
+    ...room,
+    id: String(crypto.getRandomValues(new Uint8Array(8))),
+  }));
+
+  const [rooms, setRooms] = useStateWithLocalStorage('rooms', savedRooms);
 
   const [isOptimizing, setIsOptimizing] = useState(false);
 
@@ -37,17 +78,16 @@ export function BaseView(props: BaseViewProps): ReactElement {
   });
 
   const savedMatrix = getStateFromLocalStorage<CellViewProps[][]>('matrix', emptyMatrix);
-  const reconciledSavedMatrix = reconcile(savedMatrix.length, savedMatrix, 'reconciling matrix returned from getStateFromLocalStorage');
-
+  const reconciledSavedMatrix = reconcile(savedMatrix.length, savedMatrix, rooms, 'reconciling matrix returned from getStateFromLocalStorage');
 
   const [matrix, setReconciledMatrix] = useStateWithLocalStorage('matrix', reconciledSavedMatrix);
   const size = reconciledSavedMatrix.length;
   const setSize = (size: number) => {
-    const reconciledMatrix = reconcile(size, matrix, 'setting size');
+    const reconciledMatrix = reconcile(size, matrix, rooms, 'setting size');
     setReconciledMatrix(reconciledMatrix);
   };
   const setMatrix = (matrix: CellViewProps[][]) => {
-    const reconciledMatrix = reconcile(size, matrix, 'setting matrix');
+    const reconciledMatrix = reconcile(size, matrix, rooms, 'setting matrix');
     setReconciledMatrix(reconciledMatrix);
   };
 
@@ -59,7 +99,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
   }
 
   function cellsNeeded(): number {
-    return props.rooms
+    return rooms
       .map((room) => room.size)
       .reduce((sum, roomSize) => sum + roomSize);
   }
@@ -70,9 +110,9 @@ export function BaseView(props: BaseViewProps): ReactElement {
   }
 
   function optimizeBaseLayout(originalMatrix: CellViewProps[][], iterations: number) {
-    _validateRoomSizes(props.rooms);
-    _validateRoomUniqueness(props.rooms);
-    _validateLinkReciprocity(props.rooms);
+    _validateRoomSizes(rooms);
+    _validateRoomUniqueness(rooms);
+    _validateLinkReciprocity(rooms);
     let currentMatrix: CellViewProps[][] = _cloneMatrix(originalMatrix);
     let currentEnergy = _getEnergy(currentMatrix);
     let globalMinimumMatrix = currentMatrix;
@@ -134,16 +174,16 @@ export function BaseView(props: BaseViewProps): ReactElement {
     ];
   }
 
-  function reconcile(size: number, originalCellProps: CellViewProps[][], reason: string): CellViewProps[][] {
+  function reconcile(newSize: number, newMatrix: CellViewProps[][], newRooms: RoomViewProps[], reason: string): CellViewProps[][] {
     const reconcilers = [
       _reconcileSize,
       _reconcileRooms,
     ];
-    let reconciledCellProps = originalCellProps;
+    let reconciledMatrix = _cloneMatrix(newMatrix);
     for (const reconciler of reconcilers) {
-      reconciledCellProps = reconciler(size, reconciledCellProps);
+      reconciledMatrix = reconciler(newSize, reconciledMatrix, newRooms);
     }
-    return reconciledCellProps;
+    return reconciledMatrix;
   }
 
   function _cloneMatrix(originalMatrix: CellViewProps[][]): CellViewProps[][] {
@@ -179,22 +219,22 @@ export function BaseView(props: BaseViewProps): ReactElement {
     return choice;
   }
 
-  function _reconcileRooms(size: number, originalCellProps: CellViewProps[][]): CellViewProps[][] {
-    const roomSizesRemaining: { [roomName: string]: number } = props.rooms.reduce(
+  function _reconcileRooms(newSize: number, newMatrixOriginal: CellViewProps[][], newRooms: RoomViewProps[]): CellViewProps[][] {
+    const roomSizesRemaining: { [roomName: string]: number } = newRooms.reduce(
       (roomSizesRemaining, room) => ({
         ...roomSizesRemaining,
         [room.name]: room.size,
       }),
       {}
     );
-    const originalCellPropsClean: CellViewProps[][] = new Array(size).fill(undefined).map((_, i) => {
-      return new Array(size).fill(undefined).map((_, j) => {
+    const originalCellPropsClean: CellViewProps[][] = new Array(newSize).fill(undefined).map((_, i) => {
+      return new Array(newSize).fill(undefined).map((_, j) => {
         const originalCell = (
-          i in originalCellProps
-            && Array.isArray(originalCellProps[i])
-            && j in originalCellProps[i]
-            && typeof originalCellProps[i][j] === 'object'
-            ? originalCellProps[i][j]
+          i in newMatrixOriginal
+            && Array.isArray(newMatrixOriginal[i])
+            && j in newMatrixOriginal[i]
+            && typeof newMatrixOriginal[i][j] === 'object'
+            ? newMatrixOriginal[i][j]
             : undefined
         );
         const usable = originalCell?.usable ? true : false;
@@ -217,8 +257,8 @@ export function BaseView(props: BaseViewProps): ReactElement {
         };
       });
     });
-    const newCellProps: CellViewProps[][] = new Array(size).fill(undefined).map((_, i) => {
-      return new Array(size).fill(undefined).map((_, j) => {
+    const newCellProps: CellViewProps[][] = new Array(newSize).fill(undefined).map((_, i) => {
+      return new Array(newSize).fill(undefined).map((_, j) => {
         const originalCell = originalCellPropsClean[i][j];
         const roomName =
           !originalCell.usable
@@ -229,7 +269,10 @@ export function BaseView(props: BaseViewProps): ReactElement {
         if (!originalCell.roomName && roomName) {
           roomSizesRemaining[roomName] -= 1;
         }
+        const room = newRooms.find((room) => room.name === roomName);
+        const color = room?.color;
         return {
+          color,
           coordinates: [Number(i), Number(j)],
           roomName,
           // This is overwritten in render().
@@ -253,12 +296,12 @@ export function BaseView(props: BaseViewProps): ReactElement {
    *   If the current size is ODD,
    *     remove a row from the BOTTOM and a column from the LEFT.
    */
-  function _reconcileSize(size: number, originalMatrix: CellViewProps[][]): CellViewProps[][] {
-    const newMatrix = _cloneMatrix(originalMatrix);
+  function _reconcileSize(newSize: number, newMatrixOriginal: CellViewProps[][], _: RoomViewProps[]): CellViewProps[][] {
+    const newMatrix = _cloneMatrix(newMatrixOriginal);
 
-    for (let i = 0; i < size; i += 1) {
+    for (let i = 0; i < newSize; i += 1) {
 
-      if (newMatrix.length < size) {
+      if (newMatrix.length < newSize) {
         if (newMatrix.length % 2 === 0) {
           // Add a row to the bottom.
           newMatrix.push([]);
@@ -267,7 +310,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
           newMatrix.unshift([]);
         }
       }
-      if (newMatrix.length > size) {
+      if (newMatrix.length > newSize) {
         if (newMatrix.length % 2 === 0) {
           // Remove a row from the top.
           newMatrix.shift();
@@ -277,9 +320,9 @@ export function BaseView(props: BaseViewProps): ReactElement {
         }
       }
 
-      for (let j = 0; j < size; j += 1) {
+      for (let j = 0; j < newSize; j += 1) {
 
-        if (newMatrix[i].length < size) {
+        if (newMatrix[i].length < newSize) {
           if (newMatrix[i].length % 2 === 0) {
             // Add a column on the left.
             newMatrix[i].unshift({
@@ -296,7 +339,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
             });
           }
         }
-        if (newMatrix[i].length > size) {
+        if (newMatrix[i].length > newSize) {
           if (newMatrix[i].length % 2 === 0) {
             // Remove a column from the right.
             newMatrix[i].pop();
@@ -336,7 +379,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
         if (!_cellProps.roomName) {
           return 0;
         }
-        const room = props.rooms.find((room) => room.name === _cellProps.roomName);
+        const room = rooms.find((room) => room.name === _cellProps.roomName);
         if (!room) {
           throw new Error(`Somehow a cell has room name ${_cellProps.roomName}, but there is no such room.`);
         }
@@ -420,22 +463,8 @@ export function BaseView(props: BaseViewProps): ReactElement {
 
   return (
     <div>
-      <div className="size-input">
-        <p>Size</p>
-        <input
-          disabled={isOptimizing}
-          max={16}
-          min={1}
-          onChange={(event) => {
-            if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
-              setSize(Number(event.target.value));
-            }
-          }}
-          type="number"
-          value={size}
-        />
-      </div>
       <div className="cell-grid" >
+        <h2>Base</h2>
         {
           matrix.map((row, i) => (
             <div
@@ -490,6 +519,186 @@ export function BaseView(props: BaseViewProps): ReactElement {
       >
         Optimize
       </button>
+      <h2>Base Configuration</h2>
+      <div className="card flexbox-column">
+        <div
+          className="labeled-element"
+        >
+          <label htmlFor="size">Size</label>
+          <input
+            disabled={isOptimizing}
+            id="size"
+            max={16}
+            min={1}
+            onChange={(event) => {
+              if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
+                setSize(Number(event.target.value));
+              }
+            }}
+            type="number"
+            value={size}
+          />
+        </div>
+      </div>
+      <h2>Room Configuration</h2>
+      <div>
+        {
+          rooms.map((room, r) => (
+            <div
+              className="card flexbox-row"
+              key={r}
+            >
+              <div
+                className="labeled-element"
+              >
+                <label htmlFor={`room-${r}-name`}>Name</label>
+                <input
+                  disabled={isOptimizing}
+                  id={`room-${r}-name`}
+                  onChange={(event) => {
+                    setRooms([
+                      ...rooms.slice(0, r),
+                      {
+                        ...rooms[r],
+                        name: event.target.value,
+                      },
+                      ...rooms.slice(r + 1, rooms.length),
+                    ]);
+                  }}
+                  type="text"
+                  value={room.name}
+                />
+              </div>
+              <div
+                className="labeled-element"
+              >
+                <label htmlFor={`room-${r}-size`}>Size</label>
+                <input
+                  disabled={isOptimizing}
+                  id={`room-${r}-size`}
+                  max={16}
+                  min={1}
+                  onChange={(event) => {
+                    // if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
+                    //   setSize(Number(event.target.value));
+                    // }
+                  }}
+                  type="number"
+                  value={room.size}
+                />
+              </div>
+              <div
+                className="labeled-element"
+              >
+                <label htmlFor={`room-${r}-color`}>Color</label>
+                <input
+                  disabled={isOptimizing}
+                  id={`room-${r}-color`}
+                  onChange={(event) => {
+                    // if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
+                    //   setSize(Number(event.target.value));
+                    // }
+                  }}
+                  type="color"
+                  value={room.color}
+                />
+              </div>
+              <div
+                className="labeled-element"
+              >
+                <label htmlFor={`room-${r}-links`}>Links</label>
+                <div
+                  id={`room-${r}-links`}
+                  style={{
+                    paddingLeft: "1vmin",
+                    paddingTop: "1vmin",
+                  }}
+                >
+                  {
+                    room.links.map((link, l) => (
+                      <div
+                        className="flexbox-row"
+                        key={l}
+                      >
+                        <div
+                          className="labeled-element"
+                        >
+                          <label htmlFor={`room-${r}-link-${l}-name`}>Name</label>
+                          <select
+                            disabled={isOptimizing}
+                            id={`room-${r}-link-${l}-name`}
+                            onChange={(event) => {
+                              // if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
+                              //   setSize(Number(event.target.value));
+                              // }
+                            }}
+                            value={link.name}
+                          >
+                            {
+                              rooms
+                                .filter((otherRoom) => otherRoom !== room)
+                                .sort((a, b) => (a.name > b.name ? 1 : -1))
+                                .map((otherRoom, o) => (
+                                  <option
+                                    value={otherRoom.name}
+                                    key={o}
+                                  >
+                                    {otherRoom.name}
+                                  </option>
+                                ))
+                            }
+                          </select>
+                        </div>
+                        <div
+                          className="labeled-element"
+                        >
+                          <label htmlFor="link-delete">Delete Link</label>
+                          <button id="link-delete">
+                            -
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  }
+                  <div
+                    className="labeled-element"
+                  >
+                    <label htmlFor="link-add">Add Link</label>
+                    <button id="link-add">
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div
+                style={{
+                  alignItems: "flex-end",
+                  display: "flex",
+                  flexDirection: "column",
+                  flexGrow: 1,
+                }}
+              >
+                <div
+                  className="labeled-element"
+                >
+                  <label htmlFor="room-delete">Delete Room</label>
+                  <button id="room-delete">
+                    -
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        }
+        <div
+          className="labeled-element"
+        >
+          <label htmlFor="room-add">Add Room</label>
+          <button id="room-add">
+            +
+          </button>
+        </div>
+      </div>
     </div >
   );
 
