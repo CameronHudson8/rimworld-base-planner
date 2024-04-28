@@ -174,9 +174,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
         globalMinimumEnergy = candidateEnergy;
       }
     }
-    console.log(`maxObservedEnergyIncrease = ${maxObservedEnergyIncrease}.`);
-    console.log(`Global minimum energy = ${globalMinimumEnergy}.`);
-    return globalMinimumMatrix
+    return globalMinimumMatrix;
   }
 
   function useStateWithLocalStorage<T>(localStorageKey: string, value: T): [T, React.Dispatch<T>] {
@@ -550,7 +548,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
           (cellsAvailable(matrix) < cellsNeeded())
           || isOptimizing
         }
-        onClick={(event) => {
+        onClick={(_) => {
           setIsOptimizing(true);
           try {
             const newMatrix = optimizeBaseLayout(matrix);
@@ -563,6 +561,10 @@ export function BaseView(props: BaseViewProps): ReactElement {
       >
         Optimize
       </button>
+      {
+        isOptimizing && <div className="spinner"></div>
+      }
+      <p>Current energy: {Math.floor(_getEnergy(matrix)).toLocaleString()}</p>
       <h2>Base Configuration</h2>
       <div className="card flexbox-column">
         <div
