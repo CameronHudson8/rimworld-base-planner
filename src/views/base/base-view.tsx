@@ -125,15 +125,17 @@ export function BaseView(props: BaseViewProps): ReactElement {
     return valueString !== null ? JSON.parse(valueString) : defaultValue;
   }
 
-  function optimizeBaseLayout(originalMatrix: Cell[][], iterations: number) {
+  function optimizeBaseLayout(originalMatrix: Cell[][]) {
     _validateRoomSizes(rooms);
     _validateLinkReciprocity(rooms);
+
     let currentMatrix: Cell[][] = _cloneMatrix(originalMatrix);
     let currentEnergy = _getEnergy(currentMatrix);
     let globalMinimumMatrix = currentMatrix;
     let globalMinimumEnergy = currentEnergy;
+    let maxObservedEnergyIncrease = 0;
 
-    for (let iteration = 0; iteration < iterations; iteration += 1) {
+    for (let iteration = 0; iteration < props.iterations; iteration += 1) {
 
       // Swap the room assignments of 2 cells in candidateMatrix (ONLY their roomIds).
       const candidateMatrix = _cloneMatrix(currentMatrix);
@@ -159,12 +161,11 @@ export function BaseView(props: BaseViewProps): ReactElement {
       candidateMatrix[cell2i][cell2j].roomId = cell1RoomId;
 
       const candidateEnergy = _getEnergy(candidateMatrix);
-      const acceptanceProbabilityThreshold = (1 - iteration / iterations);
+      const energyIncrease = candidateEnergy - currentEnergy;
+      maxObservedEnergyIncrease = Math.max(maxObservedEnergyIncrease, energyIncrease);
 
-      if (
-        (candidateEnergy < currentEnergy)
-        || (candidateEnergy > currentEnergy && Math.random() < acceptanceProbabilityThreshold)
-      ) {
+      const acceptableEnergyIncrease = maxObservedEnergyIncrease * (props.iterations - iteration) / props.iterations;
+      if (energyIncrease < acceptableEnergyIncrease) {
         currentMatrix = candidateMatrix;
         currentEnergy = candidateEnergy;
       }
@@ -173,6 +174,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
         globalMinimumEnergy = candidateEnergy;
       }
     }
+    console.log(`maxObservedEnergyIncrease = ${maxObservedEnergyIncrease}.`);
     console.log(`Global minimum energy = ${globalMinimumEnergy}.`);
     return globalMinimumMatrix
   }
@@ -551,7 +553,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
         onClick={(event) => {
           setIsOptimizing(true);
           try {
-            const newMatrix = optimizeBaseLayout(matrix, props.iterations);
+            const newMatrix = optimizeBaseLayout(matrix);
             setMatrix(newMatrix);
           } catch (err) {
             console.error(err);
