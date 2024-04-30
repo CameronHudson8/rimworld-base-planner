@@ -133,7 +133,6 @@ export function BaseView(props: BaseViewProps): ReactElement {
     let currentEnergy = _getEnergy(currentMatrix);
     let globalMinimumMatrix = currentMatrix;
     let globalMinimumEnergy = currentEnergy;
-    let maxObservedEnergyIncrease = 0;
 
     for (let iteration = 0; iteration < props.iterations; iteration += 1) {
 
@@ -147,8 +146,23 @@ export function BaseView(props: BaseViewProps): ReactElement {
       if (!cell1) {
         throw new Error(`Random selection from array unexpectedly returned undefined. Is the array usableCells empty? (length = ${usableCells?.length}).`);
       }
-      const cellsInOtherRooms = usableCells.filter((cells) => cells.roomId !== cell1.roomId);
-      const cell2 = _randomFromArray(cellsInOtherRooms);
+      const cellsInOtherRooms = usableCells
+        .filter((cell) => cell.roomId !== cell1.roomId);
+
+      // If cell1 belongs to a room of size 1 with no links (such as a bedroom),
+      // then don't bother trying to swap it with another such room,
+      // Because the energy will be the same, and it will waste an iteration.
+      const cell1Room = rooms.find((room) => room.id === cell1.roomId);
+      const swappableCells =
+        (cell1Room && cell1Room.size <= 1 && cell1Room.links.length <= 0)
+          ? cellsInOtherRooms.filter((cell) => {
+            const cell2Room = rooms.find((room) => room.id === cell.roomId);
+            const isUselessSwap = cell2Room && cell2Room.size <= 1 && cell2Room.links.length <= 0;
+            return !isUselessSwap;
+          })
+          : cellsInOtherRooms;
+
+      const cell2 = _randomFromArray(swappableCells);
       if (!cell2) {
         throw new Error(`Random selection from array unexpectedly returned undefined. Is the array cellsInOtherRooms empty? (length = ${cellsInOtherRooms.length}).`);
       }
@@ -161,19 +175,33 @@ export function BaseView(props: BaseViewProps): ReactElement {
       candidateMatrix[cell2i][cell2j].roomId = cell1RoomId;
 
       const candidateEnergy = _getEnergy(candidateMatrix);
-      const energyIncrease = candidateEnergy - currentEnergy;
-      maxObservedEnergyIncrease = Math.max(maxObservedEnergyIncrease, energyIncrease);
 
-      const acceptableEnergyIncrease = maxObservedEnergyIncrease * (props.iterations - iteration) / props.iterations;
-      if (energyIncrease < acceptableEnergyIncrease) {
+      // Linear
+      // const energyIncreaseAcceptanceProbability = (props.iterations - iteration) / props.iterations;
+
+      // Quadratic
+      const energyIncreaseFractionAllowed = 1 + Math.pow(props.iterations - iteration, 2) / Math.pow(props.iterations, 2);
+
+
+      const energyIncreaseFraction = candidateEnergy / globalMinimumEnergy;
+
+      // if (
+      //   (candidateEnergy < currentEnergy)
+      //   || (candidateEnergy > currentEnergy && Math.random() < energyIncreaseAcceptanceProbability)
+      // ) {
+
+      if (energyIncreaseFraction < energyIncreaseFractionAllowed) {
         currentMatrix = candidateMatrix;
         currentEnergy = candidateEnergy;
+        // console.log(`currentEnergy changed to ${currentEnergy}`);
       }
       if (candidateEnergy < globalMinimumEnergy) {
         globalMinimumMatrix = candidateMatrix;
         globalMinimumEnergy = candidateEnergy;
+        console.log(`New global minimum discovered (${Math.floor(globalMinimumEnergy)}) at iteration ${iteration} of ${props.iterations} (${Math.floor(iteration / props.iterations * 100)}%)!`);
       }
     }
+    console.log('Done.');
     return globalMinimumMatrix;
   }
 
@@ -384,19 +412,35 @@ export function BaseView(props: BaseViewProps): ReactElement {
     if (cell1.coordinates.length !== cell2.coordinates.length) {
       throw new Error(`Cell with coordinates ${cell1.coordinates} has ${cell1.coordinates.length} coordinates, but cell with coordinates ${cell1.coordinates} has ${cell2.coordinates.length} coordinates.`);
     }
-    let distance = 0;
-    for (let coord in cell1.coordinates) {
-      distance += Math.abs(cell1.coordinates[coord] - cell2.coordinates[coord]);
+    let quadraticSum = 0;
+    for (let c = 0; c < cell1.coordinates.length; c += 1) {
+      quadraticSum += Math.pow(cell1.coordinates[c] - cell2.coordinates[c], 2);
     }
+    const distance = Math.pow(quadraticSum, 0.5);
     return distance;
   }
 
   function _getEnergy(matrix: Cell[][]): number {
     const cells = matrix.flat();
-    const energy = cells
+
+    const cellEnergyStats = cells
+      .filter((cell) => cell.usable)
       .map((cell) => {
         if (!cell.roomId) {
-          return 0;
+          return {
+            centerOfMassStats: {
+              count: 0,
+              energy: 0,
+            },
+            intraRoomStats: {
+              count: 0,
+              energy: 0,
+            },
+            interRoomStats: {
+              count: 0,
+              energy: 0,
+            },
+          };
         }
         const room = rooms.find((room) => room.id === cell.roomId);
         if (!room) {
@@ -406,13 +450,12 @@ export function BaseView(props: BaseViewProps): ReactElement {
         const allOtherCells = cells.filter((otherCell) => otherCell !== cell);
 
         const sameRoomCells = cells.filter((otherCell) => {
-          return otherCell !== cell
-            && otherCell.roomId === cell.roomId;
+          return otherCell !== cell && otherCell.roomId === cell.roomId;
         });
+
         const linkedRoomNames = room.links.map((link) => link.name);
         const linkedRoomCells = cells
-          .filter((linkedRoomCell) => {
-
+          .filter((otherCell) => {
             const linkedRoomIds = linkedRoomNames.map((linkedRoomName) => {
               const linkedRoom = rooms.find((room) => room.name === linkedRoomName);
               if (!linkedRoom) {
@@ -420,31 +463,74 @@ export function BaseView(props: BaseViewProps): ReactElement {
               }
               return linkedRoom.id;
             });
-
-            return linkedRoomCell.roomId && linkedRoomIds.includes(linkedRoomCell.roomId);
+            return otherCell.roomId && linkedRoomIds.includes(otherCell.roomId);
           });
 
         const [
-          centerOfMassEnergy,
-          intraRoomEnergy,
-          interRoomEnergy,
+          centerOfMassStats,
+          intraRoomStats,
+          interRoomStats,
         ] = [
           allOtherCells,
           sameRoomCells,
           linkedRoomCells,
         ]
-          .map((otherCells) => otherCells
+          .map((cellGroup) => cellGroup
             .map((otherCell) => _getDistance(cell, otherCell))
             .map((distance) => Math.pow(distance, 2))
-            .reduce((sum, energy) => sum + energy, 0)
+            .reduce(
+              ({ count, energy }, e) => ({
+                count: count + 1,
+                energy: energy + e,
+              }),
+              {
+                count: 0,
+                energy: 0,
+              }
+            )
           );
-        const energy =
-          Math.pow(centerOfMassEnergy, props.centerOfMassWeight)
-          + Math.pow(intraRoomEnergy, props.intraRoomWeight)
-          + Math.pow(interRoomEnergy, props.interRoomWeight);
-        return energy;
-      })
-      .reduce((sum, energy) => sum + energy, 0);
+        return {
+          centerOfMassStats,
+          intraRoomStats,
+          interRoomStats,
+        };
+      });
+
+    const matrixEnergyStats = cellEnergyStats.reduce((matrixEnergyStats, _cellEnergyStats) => ({
+      centerOfMassStats: {
+        count: matrixEnergyStats.centerOfMassStats.count + _cellEnergyStats.centerOfMassStats.count,
+        energy: matrixEnergyStats.centerOfMassStats.energy + _cellEnergyStats.centerOfMassStats.energy,
+      },
+      intraRoomStats: {
+        count: matrixEnergyStats.intraRoomStats.count + _cellEnergyStats.intraRoomStats.count,
+        energy: matrixEnergyStats.intraRoomStats.energy + _cellEnergyStats.intraRoomStats.energy,
+      },
+      interRoomStats: {
+        count: matrixEnergyStats.interRoomStats.count + _cellEnergyStats.interRoomStats.count,
+        energy: matrixEnergyStats.interRoomStats.energy + _cellEnergyStats.interRoomStats.energy,
+      },
+    }),
+      {
+        centerOfMassStats: {
+          count: 0,
+          energy: 0,
+        },
+        intraRoomStats: {
+          count: 0,
+          energy: 0,
+        },
+        interRoomStats: {
+          count: 0,
+          energy: 0,
+        },
+      }
+    );
+
+    const { centerOfMassStats, intraRoomStats, interRoomStats } = matrixEnergyStats;
+    const energy =
+      (centerOfMassStats.count === 0 ? 0 : Math.pow(centerOfMassStats.energy / centerOfMassStats.count, props.centerOfMassWeight))
+      + (intraRoomStats.count === 0 ? 0 : Math.pow(intraRoomStats.energy / intraRoomStats.count, props.intraRoomWeight))
+      + (interRoomStats.count === 0 ? 0 : Math.pow(interRoomStats.energy / interRoomStats.count, props.interRoomWeight));
     return energy;
   }
 

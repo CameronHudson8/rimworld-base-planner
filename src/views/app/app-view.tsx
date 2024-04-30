@@ -16,7 +16,7 @@ export function AppView(props: AppViewProps): ReactElement {
         centerOfMassWeight={0.5}
         intraRoomWeight={2}
         interRoomWeight={1}
-        iterations={Math.pow(2, 17)}
+        iterations={Math.pow(2, 16)}
       ></BaseView>
     </div>
   );
