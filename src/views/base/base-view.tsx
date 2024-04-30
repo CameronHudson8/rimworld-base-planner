@@ -75,6 +75,11 @@ export function BaseView(props: BaseViewProps): ReactElement {
   const savedRooms = getStateFromLocalStorage<RoomViewProps[]>('rooms', defaultRooms);
   const reconciledSavedRooms = _reconcileRoomLinks(savedRooms);
   const [rooms, setRoomsBeforeReconcilingMatrix] = useStateWithLocalStorage('rooms', reconciledSavedRooms);
+  const roomLookup: { [roomId: string]: RoomViewProps } = rooms.reduce((roomLookup, room) => ({
+    ...roomLookup,
+    [room.id]: room,
+  }), {})
+
   const setRooms = (rooms: RoomViewProps[]) => {
     // TODO somehow refactor this so that there is no state overlap between the rooms and the matrix.
     setRoomsBeforeReconcilingMatrix(rooms);
@@ -152,11 +157,11 @@ export function BaseView(props: BaseViewProps): ReactElement {
       // If cell1 belongs to a room of size 1 with no links (such as a bedroom),
       // then don't bother trying to swap it with another such room,
       // Because the energy will be the same, and it will waste an iteration.
-      const cell1Room = rooms.find((room) => room.id === cell1.roomId);
+      const cell1Room = cell1.roomId ? roomLookup[cell1.roomId] : undefined;
       const swappableCells =
         (cell1Room && cell1Room.size <= 1 && cell1Room.links.length <= 0)
           ? cellsInOtherRooms.filter((cell) => {
-            const cell2Room = rooms.find((room) => room.id === cell.roomId);
+            const cell2Room = cell.roomId ? roomLookup[cell.roomId] : undefined;
             const isUselessSwap = cell2Room && cell2Room.size <= 1 && cell2Room.links.length <= 0;
             return !isUselessSwap;
           })
@@ -442,7 +447,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
             },
           };
         }
-        const room = rooms.find((room) => room.id === cell.roomId);
+        const room = cell.roomId ? roomLookup[cell.roomId] : undefined;
         if (!room) {
           throw new Error(`Somehow a cell has room name ${cell.roomId}, but there is no such room.`);
         }
@@ -595,7 +600,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
             >
               {
                 row.map((cell, j) => {
-                  const room = rooms.find((room) => room.id === cell.roomId);
+                  const room = cell.roomId ? roomLookup[cell.roomId] : undefined;
                   const roomName = room?.name;
                   const color = room?.color;
                   return (
