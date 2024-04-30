@@ -530,7 +530,6 @@ export function BaseView(props: BaseViewProps): ReactElement {
         },
       }
     );
-
     const { centerOfMassStats, intraRoomStats, interRoomStats } = matrixEnergyStats;
     const energy =
       (centerOfMassStats.count === 0 ? 0 : Math.pow(centerOfMassStats.energy / centerOfMassStats.count, props.centerOfMassWeight))
@@ -543,6 +542,12 @@ export function BaseView(props: BaseViewProps): ReactElement {
     const colorsHex = Array.from(crypto.getRandomValues(new Uint8Array(3)))
       .map((color) => Number(color).toString(16));
     return `#${colorsHex.join('')}`;
+  }
+
+  function _roundToSignificantDigits(value: number, significantDigits: number): number {
+    const orderOfMagnitude = Math.floor(Math.log10(value));
+    const roundedEnergy = Math.round(value / Math.pow(10, orderOfMagnitude - significantDigits)) * Math.pow(10, orderOfMagnitude - significantDigits);
+    return roundedEnergy;
   }
 
   function _withUpdatedCell(originalMatrix: Cell[][], updatedCell: Cell) {
@@ -590,7 +595,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
 
   return (
     <div>
-      <div className="cell-grid" >
+      <div className="cell-grid">
         <h2>Base</h2>
         {
           matrix.map((row, i) => (
@@ -655,7 +660,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
       {
         isOptimizing && <div className="spinner"></div>
       }
-      <p>Current energy: {Math.floor(_getEnergy(matrix)).toLocaleString()}</p>
+      <p>Current energy: {_roundToSignificantDigits(_getEnergy(matrix), 4).toLocaleString()}</p>
       <h2>Base Configuration</h2>
       <div className="card flexbox-column">
         <div
@@ -982,7 +987,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
           </button>
         </div>
       </div>
-    </div >
+    </div>
   );
 
 }
