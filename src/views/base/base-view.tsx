@@ -28,22 +28,10 @@ export class NotEnoughSpaceError extends Error {
 
 export function BaseView(props: BaseViewProps): ReactElement {
 
-  function createId(): string {
-    return Array.from(crypto.getRandomValues(new Uint8Array(4)))
-      .map((idPart) => {
-        let idPartString = String(idPart);
-        while (idPartString.length < Uint8Array.length) {
-          idPartString = `0${idPartString}`;
-        }
-        return idPartString;
-      })
-      .join('');
-  }
-
   const defaultRooms: RoomViewProps[] = [
     {
       color: "#ff7373",
-      id: createId(),
+      id: _createId(),
       links: [
         {
           name: 'storage',
@@ -54,7 +42,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
     },
     {
       color: "#fc8332",
-      id: createId(),
+      id: _createId(),
       links: [
         {
           name: 'kitchen',
@@ -65,7 +53,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
     },
     {
       color: "#048a49",
-      id: createId(),
+      id: _createId(),
       links: [],
       name: "bedroom 1",
       size: 1
@@ -125,6 +113,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
       .reduce((sum, roomSize) => sum + roomSize);
   }
 
+
   function getStateFromLocalStorage<T>(localStorageKey: string, defaultValue: T): T {
     const valueString = localStorage.getItem(localStorageKey);
     return valueString !== null ? JSON.parse(valueString) : defaultValue;
@@ -183,17 +172,10 @@ export function BaseView(props: BaseViewProps): ReactElement {
 
       // Linear
       // const energyIncreaseAcceptanceProbability = (props.iterations - iteration) / props.iterations;
-
       // Quadratic
       const energyIncreaseFractionAllowed = 1 + Math.pow(props.iterations - iteration, 2) / Math.pow(props.iterations, 2);
 
-
       const energyIncreaseFraction = candidateEnergy / globalMinimumEnergy;
-
-      // if (
-      //   (candidateEnergy < currentEnergy)
-      //   || (candidateEnergy > currentEnergy && Math.random() < energyIncreaseAcceptanceProbability)
-      // ) {
 
       if (energyIncreaseFraction < energyIncreaseFractionAllowed) {
         currentMatrix = candidateMatrix;
@@ -243,6 +225,20 @@ export function BaseView(props: BaseViewProps): ReactElement {
       }));
     });
     return clonedMatrix;
+  }
+
+  function _createId(): string {
+    return Array.from(crypto.getRandomValues(new Uint8Array(4)))
+      .map((idPart) => _padWithZeros(idPart, Uint8Array.length))
+      .join('');
+  }
+
+  function _padWithZeros(value: number | string, finalLength: number): string {
+    let valueString = String(value);
+    while (valueString.length < finalLength) {
+      valueString = `0${valueString}`;
+    }
+    return valueString;
   }
 
   function _randomFromArray<T>(arr: T[]): T | undefined {
@@ -540,13 +536,17 @@ export function BaseView(props: BaseViewProps): ReactElement {
 
   function _randomColor(): string {
     const colorsHex = Array.from(crypto.getRandomValues(new Uint8Array(3)))
-      .map((color) => Number(color).toString(16));
+      .map((color) => {
+        const hex = Number(color).toString(16);
+        const paddedHex = _padWithZeros(hex, 2);
+        return paddedHex;
+      });
     return `#${colorsHex.join('')}`;
   }
 
   function _roundToSignificantDigits(value: number, significantDigits: number): number {
-    const orderOfMagnitude = Math.floor(Math.log10(value));
-    const roundedEnergy = Math.round(value / Math.pow(10, orderOfMagnitude - significantDigits)) * Math.pow(10, orderOfMagnitude - significantDigits);
+    const orderOfMagnitude = Math.ceil(Math.log10(value));
+    const roundedEnergy = Math.round(value * Math.pow(10, significantDigits - orderOfMagnitude)) / Math.pow(10, significantDigits - orderOfMagnitude);
     return roundedEnergy;
   }
 
@@ -670,10 +670,11 @@ export function BaseView(props: BaseViewProps): ReactElement {
           <input
             disabled={isOptimizing}
             id="size"
-            max={16}
+            max={24}
             min={1}
             onChange={(event) => {
-              if (Number(event.target.value) > 0 && Number(event.target.value) < 16) {
+              const newBaseSize = Number(event.target.value);
+              if (newBaseSize >= Number(event.target.min) && newBaseSize <= Number(event.target.max)) {
                 setSize(Number(event.target.value));
               }
             }}
@@ -975,7 +976,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
                 ...rooms,
                 {
                   color: _randomColor(),
-                  id: createId(),
+                  id: _createId(),
                   links: [],
                   name: '',
                   size: 1,
