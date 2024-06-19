@@ -110,7 +110,7 @@ export function BaseView(props: BaseViewProps): ReactElement {
   function cellsNeeded(): number {
     return rooms
       .map((room) => room.size)
-      .reduce((sum, roomSize) => sum + roomSize);
+      .reduce((sum, roomSize) => sum + roomSize, 0);
   }
 
 
