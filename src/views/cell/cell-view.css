@@ -1,0 +1,13 @@
+.cell {
+  height: 60px;
+  width: 60px;
+  font-size: 0.70em;
+}
+
+.cell:hover {
+	opacity: 50%;
+}
+
+.cell-unusable {
+	background-color: gray;
+}
