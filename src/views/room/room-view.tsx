@@ -1,15 +1,14 @@
 import { ReactElement } from "react";
 
-export type RoomViewProps = {
+export interface RoomViewProps {
   color: string;
   id: string;
-  links: { name: string }[];
+  // links: { name: string }[];
   name: string;
   size: number;
 }
 
-export type RoomViewState = {}
 
-export function RoomView(props: RoomViewProps): ReactElement {
+export function RoomView(): ReactElement {
   return (<></>);
 }

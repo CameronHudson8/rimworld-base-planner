@@ -1,27 +1,19 @@
 import { ReactElement } from "react";
-import { Cell } from "../../models";
 
-export type CellViewProps = {
-  coordinates: number[];
+export interface CellViewProps {
   color?: string;
   roomName?: string;
-  updateSelf: (cell: Cell) => void;
+  setUsable: (usable: boolean) => void;
   usable: boolean;
 }
 
-export type CellViewState = {}
-
 export function CellView(props: CellViewProps): ReactElement {
-
   return (
     <button
-      className={`cell ${!props.usable && "cell-unusable"}`}
-      onClick={() => props.updateSelf({
-        ...props,
-        usable: !props.usable,
-      })}
+      className={`cell ${props.usable ? '' : "cell-unusable"}`}
+      onClick={() => props.setUsable(!props.usable)}
       style={{
-        backgroundColor: props.color,
+        ...(props.color ? { backgroundColor: props.color } : {}),
         textOverflow: 'ellipsis',
       }}
     >

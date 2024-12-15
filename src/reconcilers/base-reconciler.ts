@@ -1,0 +1,461 @@
+import { Publisher, UnsubscribeFunc } from "../events/publisher";
+import { BaseData, BaseError, BaseId, BaseState, notEnoughSpaceError, roomNotFoundError } from "../models/base";
+import { CellData, CellOwnerType } from "../models/cell";
+import { LinkData, LinkOwnerType } from "../models/link";
+import { RoomData, RoomName, RoomOwnerType } from "../models/room";
+import { Database } from "../storage/database";
+import { StateData } from "../views/base/base-view";
+
+type Subscription<T> = {
+  publisher: Publisher<T>,
+  unsubscribe: UnsubscribeFunc,
+};
+
+export class BaseReconciler {
+
+  baseDb: Database<BaseData>;
+  cellDb: Database<CellData>;
+  linkDb: Database<LinkData>;
+  roomDb: Database<RoomData>;
+  persist: (data: StateData) => void;
+  private subscriptions: Subscription<unknown>[] = [];
+  reconciliationInProgress: boolean = false;
+  queue: BaseId[] = [];
+
+  constructor(
+    {
+      baseDb,
+      cellDb,
+      linkDb,
+      roomDb,
+
+    }:
+      {
+        baseDb: Database<BaseData>,
+        cellDb: Database<CellData>,
+        linkDb: Database<LinkData>,
+        roomDb: Database<RoomData>,
+      },
+    persist: (data: StateData) => void,
+  ) {
+    this.baseDb = baseDb;
+    this.cellDb = cellDb;
+    this.linkDb = linkDb;
+    this.roomDb = roomDb;
+    this.persist = persist;
+
+    // Subscribe to database change events.
+    this.subscribe(baseDb);
+    this.subscribe(cellDb);
+    this.subscribe(linkDb);
+    this.subscribe(roomDb);
+
+  }
+
+  reconcile(baseId: BaseId): BaseData {
+    // Reconcile the child resources in this order:
+    // 1. The rooms.
+    // 2. The links, which refer to the rooms.
+    // 3. The cells, which refer to the rooms.
+    this.reconcileRooms(this.baseDb.get(baseId));
+    this.reconcileLinks(this.baseDb.get(baseId));
+    this.reconcileCells(this.baseDb.get(baseId));
+
+    const base = this.baseDb.get(baseId);
+    const cellsNeeded = base.spec.rooms.reduce((cellsNeeded, room) => cellsNeeded + room.size, 0)
+    const cellsAvailable = base.spec.cells.reduce(
+      (cellsAvailable, cellRow) => {
+        return cellsAvailable + cellRow.filter((cell) => cell.usable === true).length;
+      },
+      0,
+    );
+    base.status.errors = base.status.errors.filter((error) => !(BaseError.NOT_ENOUGH_SPACE in error));
+    if (cellsAvailable < cellsNeeded) {
+      base.status.errors.push(notEnoughSpaceError(cellsAvailable, cellsNeeded));
+      this.baseDb.put(base);
+    }
+    // base.status.energy = base.getEnergy();
+
+    base.status.state = BaseState.READY;
+    this.baseDb.put(base);
+    return base;
+  }
+
+  private reconcileCells(base: BaseData): void {
+
+    // At the end, we will delete any cells that are owned by this base, but
+    // that are no longer used.
+    let cellsToDelete = this.cellDb.list([
+      (cell) => cell.metadata.owner?.type === CellOwnerType.BASE && cell.metadata.owner?.id === base.id,
+    ]);
+
+    for (const [i, cellSpecRow] of base.spec.cells.entries()) {
+
+      // If the status array is too small, then we will need to add a new row.
+      if (i > (base.status.cells.length - 1)) {
+        base.status.cells.push([]);
+      }
+
+      for (const [j, cellSpec] of cellSpecRow.entries()) {
+
+        // If the status[i] array is too small, then we will need to add a new cell.
+        if (j > (base.status.cells[i].length - 1)) {
+          let roomId;
+          if (cellSpec.roomName !== undefined) {
+            const roomIndex = base.spec.rooms.findIndex((room) => room.name === cellSpec.roomName);
+            if (roomIndex < 0) {
+              base.status.errors.push(roomNotFoundError(`The cell at coordinates [${i}, ${j}] is assigned to a room with name '${cellSpec.roomName}', but there is no such room.`));
+              this.baseDb.put(base);
+              continue;
+            }
+            roomId = base.status.rooms[roomIndex].id;
+          }
+          const newCell = this.cellDb.create({
+            metadata: {
+              owner: {
+                type: CellOwnerType.BASE,
+                id: base.id,
+              },
+            },
+            spec: cellSpec,
+            status: {
+              roomId,
+            },
+          });
+          base.status.cells[i].push({ id: newCell.id });
+          this.baseDb.put(base);
+        }
+
+        // Get the cell.
+        const cellId = base.status.cells[i][j].id;
+        const cell = this.cellDb.get(cellId);
+        cellsToDelete = cellsToDelete.filter((cellToDelete) => cellToDelete.id !== cell.id);
+
+        // If the cell is different in any way, then update it.
+        cell.metadata = {
+          owner: {
+            type: CellOwnerType.BASE,
+            id: base.id,
+          },
+        };
+        cell.spec.usable = cellSpec.usable;
+        if (cellSpec.usable === false) {
+          delete cell.spec.roomName;
+        }
+        this.cellDb.put(cell);
+        // If the cellSpec (of the BaseSpec) has an undefined roomName,
+        // then it's possible that this cell was previously auto-assigned a room.
+        // We'll reconcile that case later.
+        if (cellSpec.roomName !== undefined) {
+          const roomIndex = base.spec.rooms.findIndex((room) => room.name === cellSpec.roomName);
+          if (roomIndex < 0) {
+            base.status.errors.push({
+              [BaseError.ROOM_NOT_FOUND]: `The cell at coordinates [${i}, ${j}] is assigned to a room with name '${cellSpec.roomName}', but there is no such room.`,
+            });
+            this.baseDb.put(base);
+            delete cell.spec.roomName;
+            delete cell.status.roomId;
+            this.cellDb.put(cell);
+            continue;
+          };
+          const roomId = base.status.rooms[roomIndex].id;
+          cell.spec.roomName = cellSpec.roomName;
+          cell.status.roomId = roomId;
+        }
+        this.cellDb.put(cell);
+      }
+
+      // It's possible that the BaseSpec has decreased in size.
+      // Therefore, shrink the BaseStatus accordingly.
+      base.status.cells[i].splice(base.spec.cells[i].length, (base.status.cells[i].length - base.spec.cells[i].length));
+      this.baseDb.put(base);
+
+    }
+
+    // It's possible that the BaseSpec has decreased in size.
+    // Therefore, shrink the BaseStatus accordingly.
+    base.status.cells.splice(base.spec.cells.length, (base.status.cells.length - base.spec.cells.length));
+    this.baseDb.put(base);
+
+    // Delete any lingering cells that are owned by this base.
+    cellsToDelete.forEach((existingCell) => {
+      this.cellDb.delete(existingCell.id);
+    });
+
+    // Determine how many cells need to be automatically assigned rooms.
+    const roomsToAssign: { [roomName: RoomName]: { name: RoomName, sizeRemaining: number } } = base.spec.rooms.reduce((roomsToAssign, roomSpec, i) => ({
+      ...roomsToAssign,
+      [base.status.rooms[i].id]: {
+        name: roomSpec.name,
+        sizeRemaining: roomSpec.size,
+      },
+    }), {});
+    // Deduct the cells that have already been assigned to rooms, either
+    // because they were explicitly assigned a room in the BaseSpec, or
+    // because they were automatically assigned a room during a previous
+    // reconciliation. If we encounter any rooms that have too many cells
+    // assigned or that were assigned to a roomId that no longer exists,
+    // then unassign cells as necessary.
+    for (let i = 0; i < base.spec.cells.length; i += 1) {
+      for (let j = 0; j < base.spec.cells[i].length; j += 1) {
+        const cellId = base.status.cells[i][j].id;
+        const cell = this.cellDb.get(cellId);
+        if (cell.spec.roomName === undefined) {
+          delete cell.status.roomId;
+        }
+        if (cell.spec.roomName !== undefined) {
+          const roomIndex = base.spec.rooms.findIndex((room) => room.name === cell.spec.roomName);
+          if (roomIndex < 0) {
+            delete cell.spec.roomName;
+            delete cell.status.roomId;
+          } else {
+            const roomId = base.status.rooms[roomIndex].id;
+            cell.status.roomId = roomId;
+          }
+        }
+        this.cellDb.put(cell);
+        if (cell.status.roomId === undefined) {
+          continue;
+        }
+        if (roomsToAssign[cell.status.roomId].sizeRemaining <= 0) {
+          delete cell.status.roomId;
+          delete cell.spec.roomName;
+          this.cellDb.put(cell);
+          continue;
+        }
+        roomsToAssign[cell.status.roomId].sizeRemaining -= 1;
+      }
+    }
+    // Assign the remaining usable cells to rooms.
+    const roomsToAssignQueue = Object.entries(roomsToAssign)
+      .filter(([, room]) => room.sizeRemaining > 0)
+      .map(([roomId, room]) => ({
+        id: roomId,
+        name: room.name,
+        sizeRemaining: room.sizeRemaining,
+      }));
+    for (let i = 0; i < base.spec.cells.length; i += 1) {
+      for (let j = 0; j < base.spec.cells[i].length; j += 1) {
+        if (roomsToAssignQueue.length <= 0) {
+          break;
+        }
+        const cellId = base.status.cells[i][j].id;
+        const cell = this.cellDb.get(cellId);
+        if (cell.spec.usable === false) {
+          continue;
+        }
+        if (cell.spec.roomName !== undefined) {
+          continue;
+        }
+        const roomToAssign = roomsToAssignQueue[0];
+        cell.spec.roomName = roomToAssign.name;
+        cell.status.roomId = roomToAssign.id;
+        this.cellDb.put(cell);
+        roomToAssign.sizeRemaining -= 1;
+        if (roomToAssign.sizeRemaining <= 0) {
+          roomsToAssignQueue.shift();
+        }
+      }
+    }
+  }
+
+  private reconcileLinks(base: BaseData): void {
+
+    // At the end, we will delete any links that are owned by this base, but
+    // that are no longer used.
+    let linksToDelete = this.linkDb.list([
+      (link) => link.metadata.owner?.type === LinkOwnerType.BASE && link.metadata.owner?.id === base.id,
+    ]);
+
+    for (const [i, linkSpec] of base.spec.links.entries()) {
+
+      // If the status array is too small, then we will need to add a new link.
+      if (i > base.status.links.length - 1) {
+        const room0Index = base.spec.rooms.findIndex((room) => room.name === linkSpec.roomNames[0]);
+        if (room0Index < 0) {
+          base.status.errors.push(roomNotFoundError(`A link connects rooms with names '${linkSpec.roomNames[0]}' and '${linkSpec.roomNames[1]}', but there is no room with the name '${linkSpec.roomNames[0]}'.`));
+          this.baseDb.put(base);
+          continue;
+        }
+        const room1Index = base.spec.rooms.findIndex((room) => room.name === linkSpec.roomNames[1]);
+        if (room1Index < 0) {
+          base.status.errors.push(roomNotFoundError(`A link connects rooms with names '${linkSpec.roomNames[0]}' and '${linkSpec.roomNames[1]}', but there is no room with the name '${linkSpec.roomNames[1]}'.`));
+          this.baseDb.put(base);
+          continue;
+        }
+        const room0Id = base.status.rooms[room0Index].id;
+        const room1Id = base.status.rooms[room1Index].id;
+        const newLink = this.linkDb.create({
+          metadata: {
+            owner: {
+              type: LinkOwnerType.BASE,
+              id: base.id,
+            },
+          },
+          spec: linkSpec,
+          status: {
+            roomIds: {
+              0: room0Id,
+              1: room1Id,
+            }
+          },
+        });
+        base.status.links.push({ id: newLink.id });
+        this.baseDb.put(base);
+      }
+
+      // Get the link.
+      const linkId = base.status.links[i].id;
+      const link = this.linkDb.get(linkId);
+      linksToDelete = linksToDelete.filter((linkToDelete) => linkToDelete.id !== link.id);
+
+      // Look up rooms with matching room names. This is not
+      // 100% accurate because the user could have 2 rooms with the same name.
+      const room0Index = base.spec.rooms.findIndex((room) => room.name === linkSpec.roomNames[0]);
+      if (room0Index < 0) {
+        base.status.errors.push(roomNotFoundError(`A link connects rooms with names '${linkSpec.roomNames[0]}' and '${linkSpec.roomNames[1]}', but there is no room with the name '${linkSpec.roomNames[0]}'.`));
+        this.baseDb.put(base);
+        continue;
+      }
+      const room1Index = base.spec.rooms.findIndex((room) => room.name === linkSpec.roomNames[1]);
+      if (room1Index < 0) {
+        base.status.errors.push(roomNotFoundError(`A link connects rooms with names '${linkSpec.roomNames[0]}' and '${linkSpec.roomNames[1]}', but there is no room with the name '${linkSpec.roomNames[1]}'.`));
+        this.baseDb.put(base);
+        continue;
+      }
+      const room0Id = base.status.rooms[room0Index].id;
+      const room1Id = base.status.rooms[room1Index].id;
+
+      // If the link is different in any way, then update it.
+      link.metadata = {
+        owner: {
+          type: LinkOwnerType.BASE,
+          id: base.id,
+        },
+      };
+      this.linkDb.put(link);
+      link.spec = {
+        roomNames: {
+          0: linkSpec.roomNames[0],
+          1: linkSpec.roomNames[1],
+        },
+      };
+      link.status = {
+        roomIds: {
+          0: room0Id,
+          1: room1Id,
+        }
+      };
+      this.linkDb.put(link);
+    }
+
+    // It's possible that the BaseSpec has decreased in size.
+    // Therefore, shrink the BaseStatus accordingly.
+    base.status.links.splice(base.spec.links.length, (base.status.links.length - base.spec.links.length));
+    this.baseDb.put(base);
+
+    // Delete any lingering links that are owned by this base.
+    linksToDelete.forEach((existingLink) => {
+      this.linkDb.delete(existingLink.id);
+    });
+  }
+
+  private reconcileRooms(base: BaseData): void {
+
+    // At the end, we will delete any rooms that are owned by this base, but
+    // that are no longer used.
+    let roomsToDelete = this.roomDb.list([
+      (room) => room.metadata.owner?.type === RoomOwnerType.BASE && room.metadata.owner?.id === base.id,
+    ]);
+
+    for (const [i, roomSpec] of base.spec.rooms.entries()) {
+
+      // If the status array is too small, then we will need to create a new room.
+      if (i > (base.status.rooms.length - 1)) {
+        const newRoom = this.roomDb.create({
+          metadata: {
+            owner: {
+              type: RoomOwnerType.BASE,
+              id: base.id,
+            },
+          },
+          spec: roomSpec,
+          status: {},
+        });
+        base.status.rooms.push({ id: newRoom.id });
+        this.baseDb.put(base);
+      }
+
+      // Get the room.
+      const roomId = base.status.rooms[i].id;
+      const room = this.roomDb.get(roomId);
+      roomsToDelete = roomsToDelete.filter((roomToDelete) => roomToDelete.id !== room.id);
+
+      // If the room is different in any way, then update it.
+      room.metadata = {
+        owner: {
+          type: RoomOwnerType.BASE,
+          id: base.id,
+        }
+      };
+      room.spec = {
+        color: roomSpec.color,
+        name: roomSpec.name,
+        size: roomSpec.size,
+      };
+      room.status = {};
+      this.roomDb.put(room);
+    }
+
+    // It's possible that the BaseSpec has decreased in size.
+    // Therefore, shrink the BaseStatus accordingly.
+    base.status.rooms.splice(base.spec.rooms.length, (base.status.rooms.length - base.spec.rooms.length));
+    this.baseDb.put(base);
+
+    // Delete any lingering rooms that are owned by this base.
+    roomsToDelete.forEach((roomToDelete) => {
+      this.roomDb.delete(roomToDelete.id);
+    });
+  }
+
+  private subscribe<T>(publisher: Publisher<T>): void {
+    const unsubscribe = publisher.addSubscriber(() => {
+      // TODO This is naive for now. I don't have a good way of knowing what data type
+      // the record was, let alone which base(s) it affects.
+
+      // Critical section
+      // This only works because there is only one instance of this BaseReconciler in existence at any time.
+      if (this.reconciliationInProgress === true) {
+        return;
+      }
+      this.reconciliationInProgress = true;
+      for (const base of this.baseDb.list()) {
+        base.status.state = BaseState.RECONCILING;
+        this.baseDb.put(base);
+        this.queue.push(base.id);
+      }
+      try {
+        for (const baseId of this.queue) {
+          const base = this.baseDb.get(baseId);
+          if (base.status.state === BaseState.READY) {
+            continue;
+          }
+          this.reconcile(base.id);
+        }
+      } finally {
+        this.persist({
+          baseDbData: Object.values(this.baseDb.records),
+          cellDbData: Object.values(this.cellDb.records),
+          linkDbData: Object.values(this.linkDb.records),
+          roomDbData: Object.values(this.roomDb.records),
+        });
+        this.reconciliationInProgress = false;
+      }
+    });
+    this.subscriptions.push({
+      publisher,
+      unsubscribe,
+    });
+  }
+
+}
