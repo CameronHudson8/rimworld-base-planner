@@ -8,7 +8,13 @@ export default [
   {
     ignores: ["build/*"],
   },
-  { files: ["**/*.{js,mjs,cjs,ts,jsx,tsx}"] },
+  {
+    files: ["**/*.{js,mjs,cjs,ts,jsx,tsx}"],
+    rules: {
+      "react/jsx-uses-react": "off",
+      "react/react-in-jsx-scope": "off",
+    },
+  },
   {
     // This is not a plugin object, but a shareable config object
     ...reactPlugin.configs.flat.recommended,
