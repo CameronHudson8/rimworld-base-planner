@@ -216,7 +216,7 @@ export const defaultData: StateData = {
             id: "0ca59015-7a53-4d8e-a873-1c1eed99ac48",
           },
         ],
-        energy: 0,
+        energy: 2.155,
         errors: [],
         state: BaseState.READY,
       },

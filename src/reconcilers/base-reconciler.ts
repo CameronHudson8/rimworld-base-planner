@@ -74,11 +74,127 @@ export class BaseReconciler {
       base.status.errors.push(notEnoughSpaceError(cellsAvailable, cellsNeeded));
       this.baseDb.put(base);
     }
-    // base.status.energy = base.getEnergy();
+    base.status.energy = this.computeEnergy(base);
 
     base.status.state = BaseState.READY;
     this.baseDb.put(base);
     return base;
+  }
+
+  private computeEnergy(
+    base: BaseData,
+    {
+      centerOfMassWeight,
+      intraRoomWeight,
+      interRoomWeight,
+    } = {
+        centerOfMassWeight: 0.5,
+        intraRoomWeight: 2,
+        interRoomWeight: 1,
+      }
+  ): number {
+
+    function makeEmptyEnergyStats() {
+      return {
+        centerOfMassStats: {
+          count: 0,
+          energy: 0,
+        },
+        intraRoomStats: {
+          count: 0,
+          energy: 0,
+        },
+        interRoomStats: {
+          count: 0,
+          energy: 0,
+        },
+      };
+    }
+
+    const baseLinks = base.status.links.map((baseStatusLink) => this.linkDb.get(baseStatusLink.id));
+
+    const cellEnergyStats = base.status.cells.map((baseStatusCellRow1, cell1i) => {
+      return baseStatusCellRow1.map((baseStatusCell1, cell1j) => {
+        const cell1 = this.cellDb.get(baseStatusCell1.id);
+        if (
+          // Ignore unusable cells.
+          cell1.spec.usable === false
+          // Ignore cells that don't have a room assigned.
+          || cell1.status.roomId === undefined
+        ) {
+          return [makeEmptyEnergyStats()];
+        }
+
+        const cell1LinkedRoomIds = baseLinks
+          .filter((link) => link.status.roomIds[0] === cell1.status.roomId || link.status.roomIds[1] === cell1.status.roomId)
+          .map((link) => link.status.roomIds[0] === cell1.status.roomId ? link.status.roomIds[1] : link.status.roomIds[0]);
+
+        return base.status.cells.map((baseStatusCellRow2, cell2i) => {
+          // We only want to compute each cell<->cell energy only once (~n^2/2, not n^2).
+          // Therefore, return early depending on cell2i (and below, depending on cell2j).
+          return baseStatusCellRow2.map((baseStatusCell2, cell2j) => {
+            const cell2 = this.cellDb.get(baseStatusCell2.id);
+            if (
+              // Ignore unusable cells.
+              cell1.spec.usable === false
+              // Ignore cells that don't have a room assigned.
+              || cell2.status.roomId === undefined
+              // We only want to compute each cell<->cell energy only once (~n^2/2, not n^2).
+              // Therefore, return early depending on the coordinates of cell1 and cell2.
+              || (cell2i < cell1i) || ((cell2i == cell1i) && (cell2j <= cell1j))
+            ) {
+              return makeEmptyEnergyStats();
+            }
+
+            const isSameRoom = cell1.status.roomId === cell2.status.roomId;
+            const isLinkedRoom = cell1LinkedRoomIds.includes(cell2.status.roomId);
+
+            const distance = Math.pow(Math.pow(cell2i - cell1i, 2) + Math.pow(cell2j - cell1j, 2), 0.5)
+            const energy = Math.pow(distance, 2);
+            return {
+              centerOfMassStats: {
+                count: 1,
+                energy: energy,
+              },
+              intraRoomStats: {
+                count: isSameRoom ? 1 : 0,
+                energy: isSameRoom ? energy : 0,
+              },
+              interRoomStats: {
+                count: isLinkedRoom ? 1 : 0,
+                energy: isLinkedRoom ? energy : 0,
+              },
+            };
+
+          });
+        }).flat();
+      }).flat();
+    }).flat();
+
+    const cumulativeEnergyStats = cellEnergyStats.reduce((cumulativeEnergyStats, cellEnergyStats) => ({
+      centerOfMassStats: {
+        count: cumulativeEnergyStats.centerOfMassStats.count + cellEnergyStats.centerOfMassStats.count,
+        energy: cumulativeEnergyStats.centerOfMassStats.energy + cellEnergyStats.centerOfMassStats.energy,
+      },
+      intraRoomStats: {
+        count: cumulativeEnergyStats.intraRoomStats.count + cellEnergyStats.intraRoomStats.count,
+        energy: cumulativeEnergyStats.intraRoomStats.energy + cellEnergyStats.intraRoomStats.energy,
+      },
+      interRoomStats: {
+        count: cumulativeEnergyStats.interRoomStats.count + cellEnergyStats.interRoomStats.count,
+        energy: cumulativeEnergyStats.interRoomStats.energy + cellEnergyStats.interRoomStats.energy,
+      },
+    }),
+      makeEmptyEnergyStats(),
+    );
+
+    const { centerOfMassStats, intraRoomStats, interRoomStats } = cumulativeEnergyStats;
+    // We divide the energies by the counts in order to normalize the energies with respect to each other.
+    const energy =
+      (centerOfMassStats.count === 0 ? 0 : Math.pow(centerOfMassStats.energy / centerOfMassStats.count, centerOfMassWeight))
+      + (intraRoomStats.count === 0 ? 0 : Math.pow(intraRoomStats.energy / intraRoomStats.count, intraRoomWeight))
+      + (interRoomStats.count === 0 ? 0 : Math.pow(interRoomStats.energy / interRoomStats.count, interRoomWeight));
+    return energy;
   }
 
   private reconcileCells(base: BaseData): void {

@@ -409,7 +409,7 @@ describe("BaseReconciler", () => {
     // expect(distance).toEqual(Math.pow(Math.pow(0 - 1, 2) + Math.pow(0 - 1, 2), 0.5));
   });
 
-  test.skip('Center of mass energy is computed by distance squared with weight 0.5', () => {
+  test('Center of mass energy is computed by distance squared with weight 0.5', () => {
     const bedroom: RoomSpec = {
       color: "#29D7CA",
       name: 'bedroom-0',

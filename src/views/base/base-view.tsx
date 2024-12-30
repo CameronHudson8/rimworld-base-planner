@@ -42,7 +42,6 @@ export function BaseView(): ReactElement {
     localStorage.write(newValue);
     return _setState(newValue);
   };
-  console.log(state);
 
   const baseDb = new Database<BaseData>(initialData.baseDbData);
   const cellDb = new Database<CellData>(initialData.cellDbData);
@@ -56,8 +55,11 @@ export function BaseView(): ReactElement {
     linkDb,
     roomDb,
   };
-  new BaseReconciler(dbData, (stateData) => {
-    return setState(stateData);
+  new BaseReconciler(dbData, (newState) => {
+    return setState({
+      ...state,
+      ...newState,
+    });
   });
 
   const baseRecords = baseDb.list();
@@ -76,12 +78,6 @@ export function BaseView(): ReactElement {
     text: "Ready.",
     type: 'INFO',
   });
-
-  // function _roundToSignificantDigits(value: number, significantDigits: number): number {
-  //   const orderOfMagnitude = Math.ceil(Math.log10(value));
-  //   const roundedEnergy = Math.round(value * Math.pow(10, significantDigits - orderOfMagnitude)) / Math.pow(10, significantDigits - orderOfMagnitude);
-  //   return roundedEnergy;
-  // }
 
   return (
     <div>
@@ -215,7 +211,15 @@ export function BaseView(): ReactElement {
       {/* {
         isOptimizing && <div className="spinner"></div>
       } */}
-      {/* <p>Current energy: {_roundToSignificantDigits(base.status.energy, 4).toLocaleString()}</p> */}
+      <p>Current energy: {
+        base.status.energy.toLocaleString(
+          undefined,
+          {
+            minimumSignificantDigits: 4,
+            maximumSignificantDigits: 4,
+          }
+        )
+      }</p>
       <h2>Base Configuration</h2>
       <div className="card flexbox-column">
         <div
