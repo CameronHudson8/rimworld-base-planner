@@ -76,12 +76,21 @@ export enum BaseState {
 export enum BaseError {
   NOT_ENOUGH_SPACE = 'NOT_ENOUGH_SPACE',
   ROOM_NOT_FOUND = 'ROOM_NOT_FOUND',
+  TOO_MANY_CELLS_FOR_ROOM = 'TOO_MANY_CELLS_FOR_ROOM',
+  UNUSABLE_CELL_WITH_ROOM_NAME = 'UNUSABLE_CELL_WITH_ROOM_NAME',
 }
 export function notEnoughSpaceError(cellsAvailable: number, cellsNeeded: number): { [key in keyof typeof BaseError]?: string } {
   return { [BaseError.NOT_ENOUGH_SPACE]: `${cellsAvailable} cell(s) are available, but ${cellsNeeded} cell(s) are needed.` };
 }
 export function roomNotFoundError(message: string): { [key in keyof typeof BaseError]?: string } {
   return { [BaseError.ROOM_NOT_FOUND]: message };
+}
+export function tooManyCellsForRoom(roomName: RoomName, roomSize: number, cellCount: number): { [key in keyof typeof BaseError]?: string } {
+  return { [BaseError.TOO_MANY_CELLS_FOR_ROOM]: `The room named '${roomName}' should have '${roomSize}' cells assigned to it, but it has '${cellCount}' cells assigned ot it.` };
+}
+export function unusableCellWithRoomName(coordinates: [i: number, j: number], roomName: string) {
+  const [i, j] = coordinates;
+  return { [BaseError.UNUSABLE_CELL_WITH_ROOM_NAME]: `The cell at coordinates [${i}, ${j}] is unusable, but it was also assigned the room name '${roomName}'.` };
 }
 
 export const statusSchema = joi.object<BaseStatus, true>({
@@ -235,69 +244,9 @@ export class Base implements BaseData {
     return this;
   }
 
-  setSize(newSize: number): Base {
-    /**
-     * If the current cell grid is too SMALL:
-     *   If the current size is EVEN,
-     *     then add a row on the BOTTOM and a column on the LEFT.
-     *   If the current size is ODD,
-     *     then add a row on the TOP and a column on the RIGHT.
-     * If the current cell grid is too BIG:
-     *   If the current size is EVEN,
-     *     then remove a row from the TOP and a column from the RIGHT.
-     *   If the current size is ODD,
-     *     then remove a row from the BOTTOM and a column from the LEFT.
-     */
-
-    // Decreasing base size
-    while (this.spec.cells.length > newSize) {
-      if (this.spec.cells.length % 2 === 0) {
-        // Remove a row from the top.
-        this.spec.cells.shift();
-      } else {
-        // Remove a row from the bottom.
-        this.spec.cells.pop();
-      }
-      for (let i = 0; i < this.spec.cells.length; i += 1) {
-        while (this.spec.cells[i].length > newSize) {
-          if (this.spec.cells[i].length % 2 === 0) {
-            // Remove a column from the right.
-            this.spec.cells[i].pop();
-          } else {
-            // Remove a column from the left.
-            this.spec.cells[i].shift();
-          }
-        }
-      }
-    }
-    // Increasing base size
-    while (this.spec.cells.length < newSize) {
-      if (this.spec.cells.length % 2 === 0) {
-        // Add a row to the bottom.
-        this.spec.cells.push([]);
-      } else {
-        // Add a row to the top.
-        this.spec.cells.unshift([]);
-      }
-      for (let i = 0; i < this.spec.cells.length; i += 1) {
-        while (this.spec.cells[i].length < newSize) {
-          if (this.spec.cells[i].length % 2 === 0) {
-            // Add a column on the left.
-            const cellSpec = {
-              usable: false,
-            };
-            this.spec.cells[i].unshift(cellSpec);
-          } else {
-            // Add a column on the right.
-            const cellSpec = {
-              usable: false,
-            };
-            this.spec.cells[i].push(cellSpec);
-          }
-        }
-      }
-    }
-
+  setSize(newSize: number, generateCellSpec: () => CellSpec, generateCellStatus: () => { id: CellId }): Base {
+    this.spec.cells = Base.resizeGrid(this.spec.cells, newSize, generateCellSpec);
+    this.status.cells = Base.resizeGrid(this.status.cells, newSize, generateCellStatus);
     return this;
   }
 
@@ -332,25 +281,63 @@ export class Base implements BaseData {
     return value;
   }
 
-  toJSON() {
-    const HIDDEN_FIELDS = [
-      "subscriptions",
-    ];
-    const data: Partial<this> = {};
-    for (const field in this) {
-      if (HIDDEN_FIELDS.includes(field)) {
-        continue;
-      }
-      data[field] = this[field];
-    }
-    return data;
-  }
+  private static resizeGrid<T>(grid: T[][], newSize: number, generateDefaultValue: () => T): T[][] {
+    /**
+     * If the current grid is too SMALL:
+     *   If the current size is EVEN,
+     *     then add a row on the BOTTOM and a column on the LEFT.
+     *   If the current size is ODD,
+     *     then add a row on the TOP and a column on the RIGHT.
+     * If the current grid is too BIG:
+     *   If the current size is EVEN,
+     *     then remove a row from the TOP and a column from the RIGHT.
+     *   If the current size is ODD,
+     *     then remove a row from the BOTTOM and a column from the LEFT.
+     */
 
-  private static randomFromArray<T>(arr: T[]): T {
-    if (arr.length <= 0) {
-      throw new Error(`Cannot select a random element from an array of length '${arr.length}'.`);
+    // Decreasing grid size
+    while (grid.length > newSize) {
+      if (grid.length % 2 === 0) {
+        // Remove a row from the top.
+        grid.shift();
+      } else {
+        // Remove a row from the bottom.
+        grid.pop();
+      }
+      for (let i = 0; i < grid.length; i += 1) {
+        while (grid[i].length > newSize) {
+          if (grid[i].length % 2 === 0) {
+            // Remove a column from the right.
+            grid[i].pop();
+          } else {
+            // Remove a column from the left.
+            grid[i].shift();
+          }
+        }
+      }
     }
-    return arr[Math.floor(Math.random() * arr.length)];
+    // Increasing grid size
+    while (grid.length < newSize) {
+      if (grid.length % 2 === 0) {
+        // Add a row to the bottom.
+        grid.push([]);
+      } else {
+        // Add a row to the top.
+        grid.unshift([]);
+      }
+      for (let i = 0; i < grid.length; i += 1) {
+        while (grid[i].length < newSize) {
+          if (grid[i].length % 2 === 0) {
+            // Add a column on the left.
+            grid[i].unshift(generateDefaultValue());
+          } else {
+            // Add a column on the right.
+            grid[i].push(generateDefaultValue());
+          }
+        }
+      }
+    }
+    return grid;
   }
 
 };

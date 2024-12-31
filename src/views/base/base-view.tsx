@@ -5,11 +5,11 @@ import { Base } from '../../models';
 import { CellView } from '../cell';
 import { Database, defaultData } from "../../storage/database";
 import { LocalStorage } from "../../storage/local-storage";
-import { randomColor, RoomData, schema as roomSchema } from "../../models/room";
+import { randomColor, RoomData, RoomOwnerType, schema as roomSchema } from "../../models/room";
 import { BaseData, schema as baseSchema } from "../../models/base";
 import { BaseReconciler } from "../../reconcilers/base-reconciler";
 import { LinkData, schema as linkSchema } from "../../models/link";
-import { CellData, schema as cellSchema } from "../../models/cell";
+import { CellData, CellOwnerType, schema as cellSchema } from "../../models/cell";
 import { RoomView } from "../room";
 import { LinkView } from "../link/link-view";
 
@@ -55,7 +55,7 @@ export function BaseView(): ReactElement {
   const linkDb = new Database<LinkData>(initialData.linkDbData);
   const roomDb = new Database<RoomData>(initialData.roomDbData);
 
-  // The BaseReconciler subscribes to change events from the databases and performs reconciliation automatically.
+  // The BaseReconciler subscribes to change events from the baseDb and performs reconciliation automatically.
   const dbData = {
     baseDb,
     cellDb,
@@ -103,14 +103,27 @@ export function BaseView(): ReactElement {
                   // but not for those cells that have been auto-assigned to rooms.
                   // We can get the final room assignments (explicit + automatic) from base.cells[][].spec.
                   const cell = cellDb.get(baseStatusCell.id);
-                  const room = cell.status.roomId === undefined
-                    ? undefined
-                    : roomDb.get(cell.status.roomId);
+                  const roomId = cell.status.roomId;
+                  const room = roomId === undefined ? undefined : roomDb.get(roomId);
+                  const roomOptions = roomDb.list([(room) => room.metadata.owner?.type === RoomOwnerType.BASE && room.metadata.owner?.id === base.id]);
+
                   return (
                     <CellView
                       color={room?.spec.color}
                       key={j}
-                      roomName={room?.spec.name}
+                      cellICoordinate={i}
+                      cellJCoordinate={j}
+                      room={room}
+                      roomIsLocked={base.spec.cells[i][j].roomName !== undefined}
+                      roomOptions={roomOptions}
+                      setMessage={setMessage}
+                      setRoom={(newRoomId: string) => {
+                        const room = roomDb.get(newRoomId);
+                        base.spec.cells[i][j].usable = true;
+                        base.spec.cells[i][j].roomName = room.spec.name;
+                        console.log(`Putting this cellSpec in the base: ${JSON.stringify(base.spec.cells[i][j], null, 4)}`);
+                        baseDb.put(base);
+                      }}
                       setUsable={(usable: boolean) => {
                         // If it was previously unusable, then it will still have no roomId.
                         // If it was previous usable, then it will now have no roomId.
@@ -126,6 +139,10 @@ export function BaseView(): ReactElement {
                         }
                       }}
                       usable={cell.spec.usable}
+                      unsetRoom={() => {
+                        delete base.spec.cells[i][j].roomName;
+                        baseDb.put(base);
+                      }}
                     />
                   );
                 })
@@ -235,7 +252,29 @@ export function BaseView(): ReactElement {
                 return;
               }
               try {
-                base.setSize(newBaseSize);
+                base.setSize(
+                  newBaseSize,
+                  () => ({ usable: false }),
+                  () => {
+                    const newCell = cellDb.create({
+                      metadata: {
+                        owner: {
+                          type: CellOwnerType.BASE,
+                          id: base.id,
+                        },
+                      },
+                      spec: {
+                        usable: false,
+                      },
+                      status: {},
+                    });
+                    return {
+                      id: newCell.id,
+                    };
+                  },
+                );
+                console.log(`the cellDb records: ${JSON.stringify(cellDb.records, null, 4)}`);
+                console.log(`putting this base: ${JSON.stringify(base, null, 4)}`);
                 baseDb.put(base);
               } catch (err) {
                 console.error(err);
@@ -258,8 +297,7 @@ export function BaseView(): ReactElement {
             .map((room, r) => (
               <RoomView
                 deleteRoom={() => {
-                  base.deleteRoom(r);
-                  // Updated affected links.
+                  // Delete affected links.
                   const affectedLinks = base.status.links
                     .map((baseStatusLink) => linkDb.get(baseStatusLink.id))
                     .filter((link) => link.status.roomIds[0] === room.id || link.status.roomIds[1] === room.id);
@@ -267,7 +305,7 @@ export function BaseView(): ReactElement {
                     const baseLinkIndex = base.status.links.findIndex((link) => link.id === affectedLink.id);
                     base.deleteLink(baseLinkIndex);
                   }
-                  // Updated affected cells.
+                  // Update affected cells.
                   base.status.cells
                     .map((baseStatusCellRow) => baseStatusCellRow.map((baseStatusCell) => cellDb.get(baseStatusCell.id)))
                     .forEach((cellRow, i) => cellRow.forEach((cell, j) => {
@@ -275,6 +313,8 @@ export function BaseView(): ReactElement {
                         delete base.spec.cells[i][j].roomName;
                       }
                     }));
+                  // Delete the room.
+                  base.deleteRoom(r);
                   baseDb.put(base);
                 }}
                 key={r}

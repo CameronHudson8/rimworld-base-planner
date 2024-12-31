@@ -1,5 +1,5 @@
 import { Publisher, UnsubscribeFunc } from "../events/publisher";
-import { BaseData, BaseError, BaseId, BaseState, notEnoughSpaceError, roomNotFoundError, clone as cloneBase } from "../models/base";
+import { BaseData, BaseError, BaseId, BaseState, notEnoughSpaceError, roomNotFoundError, clone as cloneBase, tooManyCellsForRoom, unusableCellWithRoomName } from "../models/base";
 import { CellData, CellOwnerType, clone as cloneCell } from "../models/cell";
 import { LinkData, LinkOwnerType } from "../models/link";
 import { RoomData, RoomName, RoomOwnerType } from "../models/room";
@@ -48,9 +48,9 @@ export class BaseReconciler {
 
     // Subscribe to database change events.
     this.subscribe(baseDb);
-    this.subscribe(cellDb);
-    this.subscribe(linkDb);
-    this.subscribe(roomDb);
+    // this.subscribe(cellDb);
+    // this.subscribe(linkDb);
+    // this.subscribe(roomDb);
 
   }
 
@@ -66,11 +66,12 @@ export class BaseReconciler {
       const candidateBase = cloneBase(nextBase);
       const candidateCells = nextCells.map((cellRow) => cellRow.map((cell) => cloneCell(cell)));
 
-      // Create a list of usable cells, including their coordinates, to facilitate swapping later.
-      const usableCells = candidateBase.status.cells
-        .map((baseStatusCellRow, i) => baseStatusCellRow
-          .map((baseStatusCell, j) => ({
-            cell: this.cellDb.get(baseStatusCell.id),
+      // Create a list of usable, unlocked cells, including their coordinates, to facilitate swapping later.
+      const usableCells = candidateBase.spec.cells
+        .map((baseSpecCellRow, i) => baseSpecCellRow
+          .map((baseSpecCell, j) => ({
+            isLocked: baseSpecCell.roomName !== undefined,
+            cell: this.cellDb.get(candidateBase.status.cells[i][j].id),
             coordinates: {
               0: i,
               1: j,
@@ -78,6 +79,7 @@ export class BaseReconciler {
           }))
         )
         .flat()
+        .filter((cellWithCoordinates) => cellWithCoordinates.isLocked === false)
         .filter((cellWithCoordinates) => cellWithCoordinates.cell.spec.usable === true);
 
       // Randomly select 2 sets of coordinates, without replacement.
@@ -141,6 +143,12 @@ export class BaseReconciler {
   }
 
   reconcile(baseId: BaseId): BaseData {
+
+    // Clear any existing errors.
+    let base = this.baseDb.get(baseId);
+    base.status.errors = [];
+    this.baseDb.put(base);
+
     // Reconcile the child resources in this order:
     // 1. The rooms.
     // 2. The links, which refer to the rooms.
@@ -149,7 +157,8 @@ export class BaseReconciler {
     this.reconcileLinks(this.baseDb.get(baseId));
     this.reconcileCells(this.baseDb.get(baseId));
 
-    const base = this.baseDb.get(baseId);
+    base = this.baseDb.get(baseId);
+
     const cellsNeeded = base.spec.rooms.reduce((cellsNeeded, room) => cellsNeeded + room.size, 0)
     const cellsAvailable = base.spec.cells.reduce(
       (cellsAvailable, cellRow) => {
@@ -296,6 +305,15 @@ export class BaseReconciler {
       (cell) => cell.metadata.owner?.type === CellOwnerType.BASE && cell.metadata.owner?.id === base.id,
     ]);
 
+    // Start a tally of how many have cells have been assigned to each room.
+    const roomsToAssign: { [roomName: RoomName]: { name: RoomName, sizeRemaining: number } } = base.spec.rooms.reduce((roomsToAssign, roomSpec, i) => ({
+      ...roomsToAssign,
+      [base.status.rooms[i].id]: {
+        name: roomSpec.name,
+        sizeRemaining: roomSpec.size,
+      },
+    }), {});
+
     for (const [i, cellSpecRow] of base.spec.cells.entries()) {
 
       // If the status array is too small, then we will need to add a new row.
@@ -345,31 +363,46 @@ export class BaseReconciler {
             id: base.id,
           },
         };
-        cell.spec.usable = cellSpec.usable;
-        if (cellSpec.usable === false) {
-          delete cell.spec.roomName;
-        }
-        this.cellDb.put(cell);
-        // If the cellSpec (of the BaseSpec) has an undefined roomName,
-        // then it's possible that this cell was previously auto-assigned a room.
-        // We'll reconcile that case later.
-        if (cellSpec.roomName !== undefined) {
+
+        if (cellSpec.usable === true && cellSpec.roomName === undefined) {
+          cell.spec.usable = cellSpec.usable;
+          // Don't clear the cell's existing roomName and roomId,
+          // in case it was previously auto-assigned a room.
+          // delete cell.spec.roomName;
+          // delete cell.status.roomId;
+
+        } else if (cellSpec.usable === true && cellSpec.roomName !== undefined) {
           const roomIndex = base.spec.rooms.findIndex((room) => room.name === cellSpec.roomName);
           if (roomIndex < 0) {
-            base.status.errors.push({
-              [BaseError.ROOM_NOT_FOUND]: `The cell at coordinates [${i}, ${j}] is assigned to a room with name '${cellSpec.roomName}', but there is no such room.`,
-            });
+            base.status.errors = base.status.errors.filter((error) => !Object.keys(error).includes(BaseError.ROOM_NOT_FOUND));
+            base.status.errors.push(roomNotFoundError(`The cell at coordinates [${i}, ${j}] is assigned to a room with name '${cellSpec.roomName}', but there is no such room.`));
             this.baseDb.put(base);
-            delete cell.spec.roomName;
-            delete cell.status.roomId;
-            this.cellDb.put(cell);
             continue;
           };
           const roomId = base.status.rooms[roomIndex].id;
+          cell.spec.usable = cellSpec.usable;
           cell.spec.roomName = cellSpec.roomName;
           cell.status.roomId = roomId;
+          roomsToAssign[roomId].sizeRemaining -= 1;
+          if (roomsToAssign[roomId].sizeRemaining < 0) {
+            const room = this.roomDb.get(roomId);
+            base.status.errors = base.status.errors.filter((error) => !Object.keys(error).includes(BaseError.TOO_MANY_CELLS_FOR_ROOM));
+            base.status.errors.push(tooManyCellsForRoom(cellSpec.roomName, room.spec.size, room.spec.size - roomsToAssign[roomId].sizeRemaining));
+            this.baseDb.put(base);
+          }
+
+        } else if (cellSpec.usable === false && cellSpec.roomName === undefined) {
+          cell.spec.usable = cellSpec.usable;
+          delete cell.spec.roomName;
+          delete cell.status.roomId;
+
+        } else if (cellSpec.usable === false && cellSpec.roomName !== undefined) {
+          base.status.errors = base.status.errors.filter((error) => !Object.keys(error).includes(BaseError.UNUSABLE_CELL_WITH_ROOM_NAME));
+          base.status.errors.push(unusableCellWithRoomName([i, j], cellSpec.roomName));
+          this.baseDb.put(base);
         }
         this.cellDb.put(cell);
+
       }
 
       // It's possible that the BaseSpec has decreased in size.
@@ -389,50 +422,52 @@ export class BaseReconciler {
       this.cellDb.delete(existingCell.id);
     });
 
-    // Determine how many cells need to be automatically assigned rooms.
-    const roomsToAssign: { [roomName: RoomName]: { name: RoomName, sizeRemaining: number } } = base.spec.rooms.reduce((roomsToAssign, roomSpec, i) => ({
-      ...roomsToAssign,
-      [base.status.rooms[i].id]: {
-        name: roomSpec.name,
-        sizeRemaining: roomSpec.size,
-      },
-    }), {});
-    // Deduct the cells that have already been assigned to rooms, either
-    // because they were explicitly assigned a room in the BaseSpec, or
-    // because they were automatically assigned a room during a previous
-    // reconciliation. If we encounter any rooms that have too many cells
-    // assigned or that were assigned to a roomId that no longer exists,
-    // then unassign cells as necessary.
-    for (let i = 0; i < base.spec.cells.length; i += 1) {
-      for (let j = 0; j < base.spec.cells[i].length; j += 1) {
+    // Automatically assign cells. (Do not modify those that we previously
+    // counted because they were explicitly assigned a room in the BaseSpec by
+    // the user.)
+    // First, determine how many more cells we need to assign to each room.
+    // If we find that any rooms have too many cells assigned,
+    // or if we find cells that were previously assigned to a roomId that no
+    // longer exists, then unassign cells as necessary.
+    for (let i = 0; i < base.status.cells.length; i += 1) {
+      for (let j = 0; j < base.status.cells[i].length; j += 1) {
         const cellId = base.status.cells[i][j].id;
         const cell = this.cellDb.get(cellId);
-        if (cell.spec.roomName === undefined) {
+        if (base.spec.cells[i][j].usable === false) {
+          cell.spec.usable = false;
+          delete cell.spec.roomName;
           delete cell.status.roomId;
-        }
-        if (cell.spec.roomName !== undefined) {
-          const roomIndex = base.spec.rooms.findIndex((room) => room.name === cell.spec.roomName);
-          if (roomIndex < 0) {
-            delete cell.spec.roomName;
-            delete cell.status.roomId;
-          } else {
-            const roomId = base.status.rooms[roomIndex].id;
-            cell.status.roomId = roomId;
-          }
-        }
-        this.cellDb.put(cell);
-        if (cell.status.roomId === undefined) {
+          this.cellDb.put(cell);
           continue;
         }
-        if (roomsToAssign[cell.status.roomId].sizeRemaining <= 0) {
+        if (cell.spec.roomName === undefined) {
+          delete cell.status.roomId;
+          this.cellDb.put(cell);
+          continue;
+        }
+        const roomIndex = base.spec.rooms.findIndex((room) => room.name === cell.spec.roomName);
+        if (roomIndex < 0) {
+          delete cell.spec.roomName;
+          delete cell.status.roomId;
+          this.cellDb.put(cell);
+          continue;
+        }
+        const roomId = base.status.rooms[roomIndex].id;
+        // If there are too many cells assigned this room, then unassign this
+        // cell, as long as it's not explicitly assigned to this room in the
+        // BaseSpec.
+        if (roomsToAssign[roomId].sizeRemaining <= 0 && base.spec.cells[i][j].roomName !== cell.spec.roomName) {
           delete cell.status.roomId;
           delete cell.spec.roomName;
           this.cellDb.put(cell);
           continue;
         }
+        cell.status.roomId = roomId;
+        this.cellDb.put(cell);
         roomsToAssign[cell.status.roomId].sizeRemaining -= 1;
       }
     }
+
     // Assign the remaining usable cells to rooms.
     const roomsToAssignQueue = Object.entries(roomsToAssign)
       .filter(([, room]) => room.sizeRemaining > 0)
@@ -441,8 +476,11 @@ export class BaseReconciler {
         name: room.name,
         sizeRemaining: room.sizeRemaining,
       }));
-    for (let i = 0; i < base.spec.cells.length; i += 1) {
-      for (let j = 0; j < base.spec.cells[i].length; j += 1) {
+    for (let i = 0; i < base.status.cells.length; i += 1) {
+      if (roomsToAssignQueue.length <= 0) {
+        break;
+      }
+      for (let j = 0; j < base.status.cells[i].length; j += 1) {
         if (roomsToAssignQueue.length <= 0) {
           break;
         }

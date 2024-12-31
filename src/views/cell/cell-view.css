@@ -4,9 +4,9 @@
   font-size: 0.70em;
 }
 
-.cell:hover {
+/* .cell:hover {
 	opacity: 50%;
-}
+} */
 
 .cell-unusable {
 	background-color: gray;
