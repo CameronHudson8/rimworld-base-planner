@@ -111,11 +111,10 @@ export function BaseView(): ReactElement {
                     <CellView
                       color={room?.spec.color}
                       key={j}
-                      cellICoordinate={i}
-                      cellJCoordinate={j}
                       room={room}
                       roomIsLocked={base.spec.cells[i][j].roomName !== undefined}
                       roomOptions={roomOptions}
+                      scaleFactor={base.spec.cells.length <= 0 ? 1 : 1 / base.spec.cells.length}
                       setMessage={setMessage}
                       setRoom={(newRoomId: string) => {
                         const room = roomDb.get(newRoomId);

@@ -1,14 +1,13 @@
-import { Dispatch, ReactElement, SetStateAction, useState } from "react";
+import { Dispatch, ReactElement, SetStateAction, useEffect, useState } from "react";
 import { MessageType } from "../base/base-view";
 import { RoomData } from "../../models/room";
 
 export interface CellViewProps {
-  cellICoordinate: number,
-  cellJCoordinate: number,
   color?: string,
   room?: RoomData;
   roomIsLocked: boolean;
   roomOptions: RoomData[],
+  scaleFactor: number,
   setMessage: Dispatch<SetStateAction<{ text: string; type: MessageType; }>>,
   setRoom: (newRoomName: string) => void,
   setUsable: (usable: boolean) => void,
@@ -16,7 +15,24 @@ export interface CellViewProps {
   usable: boolean,
 }
 
-export function CellView({ cellICoordinate, cellJCoordinate, color, room, roomIsLocked, roomOptions, setMessage, setRoom, setUsable, usable, unsetRoom }: CellViewProps): ReactElement {
+export function CellView({ color, room, roomIsLocked, roomOptions, scaleFactor, setMessage, setRoom, setUsable, usable, unsetRoom }: CellViewProps): ReactElement {
+
+  function getWindowDimensions() {
+    const { innerWidth: width, innerHeight: height } = window;
+    return {
+      width, height
+    };
+  }
+
+  const [windowDimensions, setWindowDimensions] = useState(getWindowDimensions());
+  useEffect(() => {
+    function handleResize() {
+      setWindowDimensions(getWindowDimensions());
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
 
   const [isHovered, setIsHovered] = useState(false);
 
@@ -50,8 +66,10 @@ export function CellView({ cellICoordinate, cellJCoordinate, color, room, roomIs
       onMouseLeave={() => setIsHovered(false)}
       style={{
         ...(color ? { backgroundColor: color } : {}),
-        textOverflow: 'ellipsis',
         ...(isHovered ? { opacity: "50%" } : {}),
+        height: `${100 * scaleFactor}%`,
+        textOverflow: 'ellipsis',
+        width: `${100 * scaleFactor}%`,
       }}
     >
       <select
@@ -76,6 +94,9 @@ export function CellView({ cellICoordinate, cellJCoordinate, color, room, roomIs
             });
           }
         }}
+        style={{
+          fontSize: `${1 * windowDimensions.width / 256 * scaleFactor}rem`,
+        }}
         value={roomIsLocked ? room?.id : AUTO_ROOM_SETTING.id}
       >
         {
@@ -83,7 +104,7 @@ export function CellView({ cellICoordinate, cellJCoordinate, color, room, roomIs
             .map((roomOption, roomIndex) => (
               <option
                 value={roomOption.id}
-                key={`cell-${cellICoordinate}-${cellJCoordinate}-${roomIndex}`}
+                key={roomIndex}
               >
                 {roomOption.spec.name}
               </option>

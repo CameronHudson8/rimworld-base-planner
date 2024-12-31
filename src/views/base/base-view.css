@@ -5,6 +5,7 @@
 .cell-grid {
   display: flex;
   flex-direction: column;
+  max-width: 64vw;
 }
 
 .cell-row {
