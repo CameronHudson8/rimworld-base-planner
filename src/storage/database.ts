@@ -70,7 +70,6 @@ export class Database<const T extends { id: string }> implements Publisher<T> {
     };
     this.records[completeRecord.id] = completeRecord;
     const recordWithoutReferences = JSON.parse(JSON.stringify(completeRecord));
-    console.log(`cellDb.records after cell creation: ${JSON.stringify(this.records, null, 4)}`);
     this.subscribers.forEach((notify) => {
       notify(recordWithoutReferences.id);
     });

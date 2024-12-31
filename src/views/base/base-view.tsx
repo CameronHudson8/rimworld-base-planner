@@ -120,7 +120,6 @@ export function BaseView(): ReactElement {
                         const room = roomDb.get(newRoomId);
                         base.spec.cells[i][j].usable = true;
                         base.spec.cells[i][j].roomName = room.spec.name;
-                        console.log(`Putting this cellSpec in the base: ${JSON.stringify(base.spec.cells[i][j], null, 4)}`);
                         baseDb.put(base);
                       }}
                       setUsable={(usable: boolean) => {
@@ -272,8 +271,6 @@ export function BaseView(): ReactElement {
                     };
                   },
                 );
-                console.log(`the cellDb records: ${JSON.stringify(cellDb.records, null, 4)}`);
-                console.log(`putting this base: ${JSON.stringify(base, null, 4)}`);
                 baseDb.put(base);
               } catch (err) {
                 console.error(err);

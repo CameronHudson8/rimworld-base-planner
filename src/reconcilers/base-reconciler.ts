@@ -13,7 +13,7 @@ type Subscription<T> = {
 
 export class BaseReconciler {
 
-  private static OPTIMIZATION_ITERATIONS = Math.pow(2, 3);
+  private static OPTIMIZATION_ITERATIONS = Math.pow(2, 5);
 
   baseDb: Database<BaseData>;
   cellDb: Database<CellData>;
@@ -453,6 +453,12 @@ export class BaseReconciler {
           continue;
         }
         const roomId = base.status.rooms[roomIndex].id;
+        // If this cell was explicitly assigned to a room, then skip it,
+        // since we counted those earlier.
+        if (base.spec.cells[i][j].roomName !== undefined) {
+          continue;
+        }
+
         // If there are too many cells assigned this room, then unassign this
         // cell, as long as it's not explicitly assigned to this room in the
         // BaseSpec.
@@ -467,8 +473,7 @@ export class BaseReconciler {
         roomsToAssign[cell.status.roomId].sizeRemaining -= 1;
       }
     }
-
-    // Assign the remaining usable cells to rooms.
+    // Now assign the remaining usable cells to rooms.
     const roomsToAssignQueue = Object.entries(roomsToAssign)
       .filter(([, room]) => room.sizeRemaining > 0)
       .map(([roomId, room]) => ({
@@ -502,6 +507,7 @@ export class BaseReconciler {
         }
       }
     }
+
   }
 
   private reconcileLinks(base: BaseData): void {

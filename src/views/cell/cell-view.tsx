@@ -84,7 +84,6 @@ export function CellView({ color, room, roomIsLocked, roomOptions, scaleFactor, 
               unsetRoom();
               return;
             }
-            console.log(`setting roomId to ${newRoomId}...`)
             setRoom(newRoomId);
           } catch (err) {
             console.error(err);
