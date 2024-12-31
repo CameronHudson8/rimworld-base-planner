@@ -65,7 +65,7 @@ export interface Cell {
   readonly status: CellStatus;
 };
 
-export function cloneCell(cell: Cell): Cell {
+export function clone(cell: Cell): Cell {
   const clone: Cell = {
     id: cell.id,
     metadata: {

@@ -78,20 +78,6 @@ export interface Link {
   readonly status: LinkStatus;
 };
 
-// // This returns a deep clone of an existing class instance. No object references are preserved.
-// clone(): Link {
-//   const clone = new Link({
-//     id: this.id,
-//     spec: {
-//       roomNames: {
-//         0: this.spec.roomNames[0],
-//         1: this.spec.roomNames[1],
-//       },
-//     },
-//   });
-//   return clone;
-// }
-
 export function equal(link1: Link, link2: Link): boolean {
   return (link1.spec.roomNames[0] === link2.spec.roomNames[0] && link1.spec.roomNames[1] === link2.spec.roomNames[1])
     || (link1.spec.roomNames[0] === link2.spec.roomNames[1] && link1.spec.roomNames[1] === link2.spec.roomNames[0]);

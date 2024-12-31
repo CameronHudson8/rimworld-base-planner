@@ -69,7 +69,7 @@ export interface Room {
 };
 
 // This returns a deep clone of an existing class instance. No object references are preserved.
-export function cloneRoom(room: Room): Room {
+export function clone(room: Room): Room {
   const clone: Room = {
     id: room.id,
     metadata: {

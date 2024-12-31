@@ -70,7 +70,7 @@ export const specSchema = joi.object<BaseSpec, true>({
 
 export enum BaseState {
   READY = 'READY',
-  RECONCILING = 'RECONCILING'
+  RECONCILING = 'RECONCILING',
 }
 
 export enum BaseError {
@@ -134,8 +134,6 @@ export const schema = joi.object<BaseData, true>({
 
 export class Base implements BaseData {
 
-  private static OPTIMIZATION_ITERATIONS = Math.pow(2, 16);
-
   readonly id: string;
   readonly metadata = {};
   readonly spec: BaseSpec;
@@ -175,29 +173,6 @@ export class Base implements BaseData {
     return this;
   }
 
-  // // This returns a deep clone of an existing class instance. No object references are preserved.
-  // clone(): Base {
-  //   const cloneData = new Base(JSON.parse(JSON.stringify(this)));
-  //   const clone = new Base({
-  //     spec: {
-  //       cells: [],
-  //       links: [],
-  //       rooms: [],
-  //     },
-  //     status: {
-  //       cells: [],
-  //       rooms: [],
-  //       links: [],
-  //       cellsAvailable: 0,
-  //       cellsNeeded: 0,
-  //       energy: 0,
-  //       errors: [],
-  //       state: BaseState.RECONCILING,
-  //     },
-  //   });
-  //   return Object.assign(clone, cloneData);
-  // }
-
   deleteLink(index: number): Base {
     this.spec.links = [
       ...this.spec.links.slice(0, index),
@@ -215,91 +190,6 @@ export class Base implements BaseData {
     this.status.state = BaseState.RECONCILING;
     return this;
   }
-
-  // getDistance(cell1Id: CellId, cell2Id: CellId): number {
-  //   const cell1 = this.cells.get(cell1Id);
-  //   const cell2 = this.cells.get(cell2Id);
-
-  //   const distance = Math.pow(
-  //     Math.pow(cell1.status.coordinates[0] - cell2.status.coordinates[0], 2)
-  //     + Math.pow(cell1.status.coordinates[1] - cell2.status.coordinates[1], 2),
-  //     0.5
-  //   );
-  //   return distance;
-  // }
-
-  // optimize(): Base {
-
-  //   let nextBase = this.clone();
-
-  //   for (let iteration = 0; iteration < Base.OPTIMIZATION_ITERATIONS; iteration += 1) {
-
-  //     const candidateBase = nextBase.clone();
-
-  //     // Identify 2 cells that will swap roomIds.
-  //     const usableCells = candidateBase.cells
-  //       .list([(cell) => cell.spec.usable]);
-  //     const cell1 = Base.randomFromArray(usableCells);
-  //     const cell1Links = cell1.spec.roomName === undefined
-  //       ? []
-  //       : candidateBase.links.list([(link) => link.spec.roomNames[0] === cell1.spec.roomName || link.spec.roomNames[1] === cell1.spec.roomName]);
-
-  //     const swappableCells = usableCells
-  //       .filter((cell) => {
-  //         // Don't swap the cell with itself.
-  //         if (cell === cell1) {
-  //           return false;
-  //         }
-
-  //         // Don't swap roomIds with another cell that has identical links.
-  //         // The energy would be the same, so it would waste an iteration.
-  //         if (cell1.spec.roomName === undefined && cell.spec.roomName === undefined) {
-  //           return false;
-  //         }
-  //         // If cell1 has no roomId, then any cell that has a roomId would be a meaningful swap.
-  //         // The reverse is also true.
-  //         if (cell1.spec.roomName === undefined && cell.spec.roomName !== undefined) {
-  //           return true;
-  //         }
-  //         if (cell1.spec.roomName !== undefined && cell.spec.roomName === undefined) {
-  //           return true;
-  //         }
-
-  //         // If cell1 and cell have different links, then the swap is meaningful.
-  //         // If they have identical links, then it is not.
-  //         const cellLinks = cell.spec.roomName === undefined
-  //           ? []
-  //           : candidateBase.links.list([(link) => link.spec.roomNames[0] === cell.spec.roomName || link.spec.roomNames[1] === cell.spec.roomName]);
-  //         if (cell1Links.length !== cellLinks.length) {
-  //           return true;
-  //         }
-  //         return !cell1Links.every((link1) => cellLinks.some((link2) => linksEqual(link1, link2)));
-  //       });
-
-  //     const cell2 = Base.randomFromArray(swappableCells);
-  //     if (!cell2) {
-  //       throw new Error(`Random selection from array unexpectedly returned undefined. Is the array swappableCells empty? (length = ${swappableCells.length}).`);
-  //     }
-
-  //     const cell1RoomName = cell1.spec.roomName;
-  //     const cell2RoomName = cell2.spec.roomName;
-  //     cell1.spec.roomName = cell2RoomName;
-  //     cell2.spec.roomName = cell1RoomName;
-  //     candidateBase.cells.put(cell1);
-  //     candidateBase.cells.put(cell2);
-
-  //     candidateBase.status.energy = candidateBase.computeEnergy();
-
-  //     // Quadratic
-  //     const energyIncreaseFractionAllowed = 1 + Math.pow(Base.OPTIMIZATION_ITERATIONS - iteration, 2) / Math.pow(Base.OPTIMIZATION_ITERATIONS, 2);
-  //     const energyIncreaseFraction = candidateBase.status.energy / nextBase.status.energy;
-
-  //     if (energyIncreaseFraction < energyIncreaseFractionAllowed) {
-  //       nextBase = candidateBase;
-  //     }
-  //   }
-  //   return nextBase.status.energy < this.status.energy ? nextBase : this;
-  // }
 
   setCellUsability(coordinates: { 0: number, 1: number }, usable: boolean): Base {
     if (coordinates[0] < 0) {
@@ -464,3 +354,43 @@ export class Base implements BaseData {
   }
 
 };
+
+export function clone(base: BaseData): BaseData {
+  return {
+    id: base.id,
+    metadata: {},
+    spec: {
+      cells: base.spec.cells.map((baseSpecCellRow) => baseSpecCellRow.map((baseSpecCell) => ({
+        usable: baseSpecCell.usable,
+        ...("roomName" in baseSpecCell ? { roomName: baseSpecCell.roomName } : {}),
+      }))),
+      links: base.spec.links.map((baseSpecLink) => ({
+        roomNames: {
+          0: baseSpecLink.roomNames[0],
+          1: baseSpecLink.roomNames[1],
+        }
+      })),
+      rooms: base.spec.rooms.map((baseSpecRoom) => ({
+        name: baseSpecRoom.name,
+        color: baseSpecRoom.color,
+        size: baseSpecRoom.size,
+      })),
+    },
+    status: {
+      cells: base.status.cells.map((baseStatusCellRow) => baseStatusCellRow.map((baseStatusCell) => ({
+        id: baseStatusCell.id,
+      }))),
+      rooms: base.status.rooms.map((baseStatusRoom) => ({
+        id: baseStatusRoom.id,
+      })),
+      links: base.status.links.map((baseStatusLink) => ({
+        id: baseStatusLink.id,
+      })),
+      energy: base.status.energy,
+      errors: base.status.errors.map((error) => Object.entries(error)).map(([key, value]) => ({
+        [String(key)]: value,
+      })).flat(),
+      state: base.status.state,
+    }
+  };
+}

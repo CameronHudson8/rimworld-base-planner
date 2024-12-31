@@ -1,6 +1,6 @@
 import { Publisher, UnsubscribeFunc } from "../events/publisher";
-import { BaseData, BaseError, BaseId, BaseState, notEnoughSpaceError, roomNotFoundError } from "../models/base";
-import { CellData, CellOwnerType } from "../models/cell";
+import { BaseData, BaseError, BaseId, BaseState, notEnoughSpaceError, roomNotFoundError, clone as cloneBase } from "../models/base";
+import { CellData, CellOwnerType, clone as cloneCell } from "../models/cell";
 import { LinkData, LinkOwnerType } from "../models/link";
 import { RoomData, RoomName, RoomOwnerType } from "../models/room";
 import { Database } from "../storage/database";
@@ -12,6 +12,8 @@ type Subscription<T> = {
 };
 
 export class BaseReconciler {
+
+  private static OPTIMIZATION_ITERATIONS = Math.pow(2, 3);
 
   baseDb: Database<BaseData>;
   cellDb: Database<CellData>;
@@ -52,6 +54,92 @@ export class BaseReconciler {
 
   }
 
+  optimize(baseId: BaseId): { baseDbData: BaseData[], cellDbData: CellData[] } {
+    const base = this.baseDb.get(baseId);
+    const cells = base.status.cells.map((baseStatusCellRow) => baseStatusCellRow.map((baseStatusCell) => this.cellDb.get(baseStatusCell.id)));
+
+    let nextBase = cloneBase(base);
+    let nextCells = cells.map((cellRow) => cellRow.map((cell) => cloneCell(cell)));
+
+    for (let iteration = 0; iteration < BaseReconciler.OPTIMIZATION_ITERATIONS; iteration += 1) {
+
+      const candidateBase = cloneBase(nextBase);
+      const candidateCells = nextCells.map((cellRow) => cellRow.map((cell) => cloneCell(cell)));
+
+      // Create a list of usable cells, including their coordinates, to facilitate swapping later.
+      const usableCells = candidateBase.status.cells
+        .map((baseStatusCellRow, i) => baseStatusCellRow
+          .map((baseStatusCell, j) => ({
+            cell: this.cellDb.get(baseStatusCell.id),
+            coordinates: {
+              0: i,
+              1: j,
+            },
+          }))
+        )
+        .flat()
+        .filter((cellWithCoordinates) => cellWithCoordinates.cell.spec.usable === true);
+
+      // Randomly select 2 sets of coordinates, without replacement.
+      const [cell1WithCoordinates] = usableCells.splice(Math.floor(Math.random() * usableCells.length), 1);
+      const [cell2WithCoordinates] = usableCells.splice(Math.floor(Math.random() * usableCells.length), 1);
+      const {
+        coordinates: {
+          0: cell1i,
+          1: cell1j,
+        },
+      } = cell1WithCoordinates;
+      const {
+        coordinates: {
+          0: cell2i,
+          1: cell2j,
+        },
+      } = cell2WithCoordinates;
+
+      // We want to swap 3 things:
+      // 1. If present, the roomName(s) in the CellSpecs of the BaseSpec.
+      //    (There aren't corresponding roomId(s) in the the CellStatuses of the BaseStatus.)
+      // 2. The roomName(s) in the CellSpecs of the cells.
+      // 3. The roomIds(s) in the CellStatuses of the cells.
+      const baseSpecCell1RoomName = candidateBase.spec.cells[cell1i][cell1j].roomName;
+      const baseSpecCell2RoomName = candidateBase.spec.cells[cell2i][cell2j].roomName;
+      candidateBase.spec.cells[cell1i][cell1j].roomName = baseSpecCell2RoomName;
+      candidateBase.spec.cells[cell1i][cell1j].roomName = baseSpecCell1RoomName;
+
+      const cell1SpecRoomName = candidateCells[cell1i][cell1j].spec.roomName;
+      const cell2SpecRoomName = candidateCells[cell2i][cell2j].spec.roomName;
+      candidateCells[cell1i][cell1j].spec.roomName = cell2SpecRoomName;
+      candidateCells[cell2i][cell2j].spec.roomName = cell1SpecRoomName;
+
+      const cell1StatusRoomId = candidateCells[cell1i][cell1j].status.roomId;
+      const cell2StatusRoomId = candidateCells[cell2i][cell2j].status.roomId;
+      candidateCells[cell1i][cell1j].status.roomId = cell2StatusRoomId;
+      candidateCells[cell2i][cell2j].status.roomId = cell1StatusRoomId;
+
+      // Create a temporary "database" (not saved to local storage) that we will use for the energy computation.
+      const cellDb = new Database<CellData>(candidateCells.flat());
+
+      candidateBase.status.energy = this.computeEnergy(candidateBase, { cellDb });
+
+      // Quadratic
+      const energyIncreaseFractionAllowed = 1 + Math.pow(BaseReconciler.OPTIMIZATION_ITERATIONS - iteration, 2) / Math.pow(BaseReconciler.OPTIMIZATION_ITERATIONS, 2);
+      const energyIncreaseFraction = candidateBase.status.energy / nextBase.status.energy;
+
+      if (energyIncreaseFraction < energyIncreaseFractionAllowed) {
+        nextBase = candidateBase;
+        nextCells = candidateCells;
+      }
+    }
+    nextBase = nextBase.status.energy < base.status.energy ? nextBase : base;
+    nextCells = nextBase.status.energy < base.status.energy ? nextCells : cells;
+    nextBase.status.state = BaseState.READY;
+
+    return {
+      baseDbData: [nextBase],
+      cellDbData: nextCells.flat(),
+    };
+  }
+
   reconcile(baseId: BaseId): BaseData {
     // Reconcile the child resources in this order:
     // 1. The rooms.
@@ -75,7 +163,6 @@ export class BaseReconciler {
       this.baseDb.put(base);
     }
     base.status.energy = this.computeEnergy(base);
-
     base.status.state = BaseState.READY;
     this.baseDb.put(base);
     return base;
@@ -84,13 +171,17 @@ export class BaseReconciler {
   private computeEnergy(
     base: BaseData,
     {
-      centerOfMassWeight,
-      intraRoomWeight,
-      interRoomWeight,
+      cellDb = this.cellDb,
+      centerOfMassWeight = 0.5,
+      interRoomWeight = 1,
+      intraRoomWeight = 2,
+      linkDb = this.linkDb,
     } = {
+        cellDb: this.cellDb,
         centerOfMassWeight: 0.5,
-        intraRoomWeight: 2,
         interRoomWeight: 1,
+        intraRoomWeight: 2,
+        linkDb: this.linkDb,
       }
   ): number {
 
@@ -111,11 +202,11 @@ export class BaseReconciler {
       };
     }
 
-    const baseLinks = base.status.links.map((baseStatusLink) => this.linkDb.get(baseStatusLink.id));
+    const baseLinks = base.status.links.map((baseStatusLink) => linkDb.get(baseStatusLink.id));
 
     const cellEnergyStats = base.status.cells.map((baseStatusCellRow1, cell1i) => {
       return baseStatusCellRow1.map((baseStatusCell1, cell1j) => {
-        const cell1 = this.cellDb.get(baseStatusCell1.id);
+        const cell1 = cellDb.get(baseStatusCell1.id);
         if (
           // Ignore unusable cells.
           cell1.spec.usable === false
@@ -133,7 +224,7 @@ export class BaseReconciler {
           // We only want to compute each cell<->cell energy only once (~n^2/2, not n^2).
           // Therefore, return early depending on cell2i (and below, depending on cell2j).
           return baseStatusCellRow2.map((baseStatusCell2, cell2j) => {
-            const cell2 = this.cellDb.get(baseStatusCell2.id);
+            const cell2 = cellDb.get(baseStatusCell2.id);
             if (
               // Ignore unusable cells.
               cell1.spec.usable === false
@@ -141,7 +232,7 @@ export class BaseReconciler {
               || cell2.status.roomId === undefined
               // We only want to compute each cell<->cell energy only once (~n^2/2, not n^2).
               // Therefore, return early depending on the coordinates of cell1 and cell2.
-              || (cell2i < cell1i) || ((cell2i == cell1i) && (cell2j <= cell1j))
+              || (cell2i < cell1i) || ((cell2i === cell1i) && (cell2j <= cell1j))
             ) {
               return makeEmptyEnergyStats();
             }
@@ -539,7 +630,7 @@ export class BaseReconciler {
       // TODO This is naive for now. I don't have a good way of knowing what data type
       // the record was, let alone which base(s) it affects.
 
-      // Critical section
+      // Begin critical section
       // This only works because there is only one instance of this BaseReconciler in existence at any time.
       if (this.reconciliationInProgress === true) {
         return;
@@ -553,10 +644,18 @@ export class BaseReconciler {
       try {
         for (const baseId of this.queue) {
           const base = this.baseDb.get(baseId);
-          if (base.status.state === BaseState.READY) {
-            continue;
+          switch (base.status.state) {
+            case BaseState.READY: {
+              continue;
+            }
+            case BaseState.RECONCILING: {
+              this.reconcile(base.id);
+              continue;
+            }
+            default: {
+              throw new Error(`Unknown base state '${base.status.state}'.`);
+            }
           }
-          this.reconcile(base.id);
         }
       } finally {
         this.persist({

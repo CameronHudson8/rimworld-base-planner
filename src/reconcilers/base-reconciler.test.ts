@@ -370,45 +370,6 @@ describe("BaseReconciler", () => {
     ]);
   });
 
-  test.skip('Can get distance between two cells', () => {
-    // const storageRoom = {
-    //   color: "#79A2F0",
-    //   id: '816f49d3-1c12-4d78-b522-9f9bf5253120',
-    //   name: 'storage-0',
-    //   size: 2,
-    // };
-    // const spec: BaseSpec = {
-    //   cells: [
-    //     [
-    //       {
-    //         usable: true,
-    //       },
-    //       {
-    //         usable: false,
-    //       },
-    //     ],
-    //     [
-    //       {
-    //         usable: false,
-    //       },
-
-    //       {
-    //         usable: true,
-    //       },
-    //     ],
-    //   ],
-    //   links: [],
-    //   rooms: [
-    //     storageRoom,
-    //   ],
-    // };
-    // const base = new Base({ spec });
-    // const cell1 = baseDb.get(base.status.cells[1][1].id);
-    // const cell2 = baseDb.get(base.status.cells[0][0].id);
-    // const distance = base.getDistance(cell1, cell2);
-    // expect(distance).toEqual(Math.pow(Math.pow(0 - 1, 2) + Math.pow(0 - 1, 2), 0.5));
-  });
-
   test('Center of mass energy is computed by distance squared with weight 0.5', () => {
     const bedroom: RoomSpec = {
       color: "#29D7CA",

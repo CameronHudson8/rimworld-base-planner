@@ -55,7 +55,7 @@ export function BaseView(): ReactElement {
     linkDb,
     roomDb,
   };
-  new BaseReconciler(dbData, (newState) => {
+  const baseReconciler = new BaseReconciler(dbData, (newState) => {
     return setState({
       ...state,
       ...newState,
@@ -70,13 +70,16 @@ export function BaseView(): ReactElement {
   const base = new Base(mostRecentBase);
 
   // const [isOptimizing, setIsOptimizing] = useState(false);
-
+  enum MessageType {
+    ERROR = "ERROR",
+    INFO = "INFO",
+  }
   const [message, setMessage] = useState<{
     text: string,
-    type: 'ERROR' | 'INFO',
+    type: MessageType,
   }>({
     text: "Ready.",
-    type: 'INFO',
+    type: MessageType.INFO,
   });
 
   return (
@@ -84,7 +87,6 @@ export function BaseView(): ReactElement {
       <div className="cell-grid">
         <h2>Base</h2>
         {
-          // base.status.cells.map((cellRow, i) => (
           base.status.cells.map((baseStatusCellRow, i) => (
             <div
               className="cell-row"
@@ -114,7 +116,7 @@ export function BaseView(): ReactElement {
                         } catch (err) {
                           console.error(err);
                           setMessage({
-                            type: 'ERROR',
+                            type: MessageType.ERROR,
                             text: String(err),
                           });
                         }
@@ -151,43 +153,36 @@ export function BaseView(): ReactElement {
       }
 
       {/* <p>{isOptimizing}</p> */}
-      {/*
       <button
-        disabled={isOptimizing}
+        // disabled={isOptimizing}
         onClick={() => {
           try {
-            // TODO Set base.status.state to 'OPTIMIZING' with info: { totalIterations: 1000, iterationsRemaining: 1000 },
-            // save it to the DB, and call setState.
-            // Upon the next React state load, it should begin optimization.
-            // If a better candidate is found, then info: { totalIterations: 1000, iterationsRemaining: x } should be updated,
-            // the Base should be saved to the DB, and setState should be called.
-            // The process will repeat until iterationsRemaining reaches 0.
             setMessage({
-              type: 'INFO',
+              type: MessageType.INFO,
               text: "Optimizing...",
             });
-            setIsOptimizing(true);
-            base.optimize();
-            baseDb.put(base);
-            reconcileBase(base);
-            setMessage({
-              type: 'INFO',
-              text: 'Ready.',
+            const { baseDbData, cellDbData } = baseReconciler.optimize(base.id);
+            setState({
+              ...state,
+              baseDbData,
+              cellDbData,
             });
           } catch (err) {
             console.error(err);
             setMessage({
-              type: 'ERROR',
+              type: MessageType.ERROR,
               text: String(err),
             });
           } finally {
-            setIsOptimizing(false);
+            setMessage({
+              type: MessageType.INFO,
+              text: 'Ready.',
+            });
           }
         }}
       >
         Optimize
       </button>
-      */}
       <button
         // disabled={isOptimizing}
         onClick={() => {
@@ -200,7 +195,7 @@ export function BaseView(): ReactElement {
           } catch (err) {
             console.error(err);
             setMessage({
-              type: 'ERROR',
+              type: MessageType.ERROR,
               text: String(err),
             });
           }
@@ -241,7 +236,7 @@ export function BaseView(): ReactElement {
               } catch (err) {
                 console.error(err);
                 setMessage({
-                  type: 'ERROR',
+                  type: MessageType.ERROR,
                   text: String(err),
                 });
               }
@@ -272,7 +267,7 @@ export function BaseView(): ReactElement {
                       const newRoomName = event.target.value;
                       try {
                         base.setRoomName(r, newRoomName);
-                        // Updated affected links.
+                        // Update the affected links.
                         const affectedLinks = base.status.links
                           .map((baseStatusLink) => linkDb.get(baseStatusLink.id))
                           .filter((link) => link.status.roomIds[0] === room.id || link.status.roomIds[1] === room.id);
@@ -289,7 +284,7 @@ export function BaseView(): ReactElement {
                       } catch (err) {
                         console.error(err);
                         setMessage({
-                          type: 'ERROR',
+                          type: MessageType.ERROR,
                           text: String(err),
                         });
                       }
@@ -310,7 +305,7 @@ export function BaseView(): ReactElement {
                       const newRoomSize = Number(event.target.value);
                       if (newRoomSize < Number(event.target.min)) {
                         setMessage({
-                          type: 'ERROR',
+                          type: MessageType.ERROR,
                           text: `The room size ${newRoomSize} is too small.`,
                         });
                         return;
@@ -321,7 +316,7 @@ export function BaseView(): ReactElement {
                       } catch (err) {
                         console.error(err);
                         setMessage({
-                          type: 'ERROR',
+                          type: MessageType.ERROR,
                           text: String(err),
                         });
                       }
@@ -345,7 +340,7 @@ export function BaseView(): ReactElement {
                       } catch (err) {
                         console.error(err);
                         setMessage({
-                          type: 'ERROR',
+                          type: MessageType.ERROR,
                           text: String(err),
                         });
                       }
@@ -410,7 +405,7 @@ export function BaseView(): ReactElement {
                                         } catch (err) {
                                           console.error(err);
                                           setMessage({
-                                            type: 'ERROR',
+                                            type: MessageType.ERROR,
                                             text: String(err),
                                           });
                                         }
@@ -450,7 +445,7 @@ export function BaseView(): ReactElement {
                                         } catch (err) {
                                           console.error(err);
                                           setMessage({
-                                            type: 'ERROR',
+                                            type: MessageType.ERROR,
                                             text: String(err),
                                           });
                                         }
@@ -481,7 +476,7 @@ export function BaseView(): ReactElement {
                                 } catch (err) {
                                   console.error(err);
                                   setMessage({
-                                    type: 'ERROR',
+                                    type: MessageType.ERROR,
                                     text: String(err),
                                   });
                                 }
@@ -532,7 +527,7 @@ export function BaseView(): ReactElement {
                         } catch (err) {
                           console.error(err);
                           setMessage({
-                            type: 'ERROR',
+                            type: MessageType.ERROR,
                             text: String(err),
                           });
                         }
@@ -562,7 +557,7 @@ export function BaseView(): ReactElement {
               } catch (err) {
                 console.error(err);
                 setMessage({
-                  type: 'ERROR',
+                  type: MessageType.ERROR,
                   text: String(err),
                 });
               }
