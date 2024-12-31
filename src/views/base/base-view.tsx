@@ -10,12 +10,19 @@ import { BaseData, schema as baseSchema } from "../../models/base";
 import { BaseReconciler } from "../../reconcilers/base-reconciler";
 import { LinkData, schema as linkSchema } from "../../models/link";
 import { CellData, schema as cellSchema } from "../../models/cell";
+import { RoomView } from "../room";
+import { LinkView } from "../link/link-view";
 
 export type StateData = {
   baseDbData: BaseData[],
   cellDbData: CellData[],
   linkDbData: LinkData[],
   roomDbData: RoomData[],
+};
+
+export enum MessageType {
+  ERROR = "ERROR",
+  INFO = "INFO",
 };
 
 export function BaseView(): ReactElement {
@@ -70,10 +77,7 @@ export function BaseView(): ReactElement {
   const base = new Base(mostRecentBase);
 
   // const [isOptimizing, setIsOptimizing] = useState(false);
-  enum MessageType {
-    ERROR = "ERROR",
-    INFO = "INFO",
-  }
+
   const [message, setMessage] = useState<{
     text: string,
     type: MessageType,
@@ -252,292 +256,141 @@ export function BaseView(): ReactElement {
           base.status.rooms
             .map((roomStatus) => roomDb.get(roomStatus.id))
             .map((room, r) => (
-              <div
-                className="card flexbox-row"
+              <RoomView
+                deleteRoom={() => {
+                  base.deleteRoom(r);
+                  // Updated affected links.
+                  const affectedLinks = base.status.links
+                    .map((baseStatusLink) => linkDb.get(baseStatusLink.id))
+                    .filter((link) => link.status.roomIds[0] === room.id || link.status.roomIds[1] === room.id);
+                  for (const affectedLink of affectedLinks) {
+                    const baseLinkIndex = base.status.links.findIndex((link) => link.id === affectedLink.id);
+                    base.deleteLink(baseLinkIndex);
+                  }
+                  // Updated affected cells.
+                  base.status.cells
+                    .map((baseStatusCellRow) => baseStatusCellRow.map((baseStatusCell) => cellDb.get(baseStatusCell.id)))
+                    .forEach((cellRow, i) => cellRow.forEach((cell, j) => {
+                      if (cell.status.roomId === room.id) {
+                        delete base.spec.cells[i][j].roomName;
+                      }
+                    }));
+                  baseDb.put(base);
+                }}
                 key={r}
+                room={room}
+                roomIndex={r}
+                setMessage={setMessage}
+                setRoomColor={(newRoomColor: string) => {
+                  base.setRoomColor(r, newRoomColor);
+                  baseDb.put(base);
+                }}
+                setRoomName={(newRoomName: string) => {
+                  base.setRoomName(r, newRoomName);
+                  // Update the affected links.
+                  const affectedLinks = base.status.links
+                    .map((baseStatusLink) => linkDb.get(baseStatusLink.id))
+                    .filter((link) => link.status.roomIds[0] === room.id || link.status.roomIds[1] === room.id);
+                  for (const affectedLink of affectedLinks) {
+                    const baseLinkIndex = base.status.links.findIndex((link) => link.id === affectedLink.id);
+                    const room0IsAffected = affectedLink.status.roomIds[0] === room.id;
+                    const room1IsAffected = affectedLink.status.roomIds[1] === room.id;
+                    base.spec.links[baseLinkIndex].roomNames = {
+                      0: room0IsAffected ? newRoomName : base.spec.links[baseLinkIndex].roomNames[0],
+                      1: room1IsAffected ? newRoomName : base.spec.links[baseLinkIndex].roomNames[1],
+                    };
+                  }
+                  baseDb.put(base);
+                }}
+                setRoomSize={(newRoomSize: number) => {
+                  base.setRoomSize(r, newRoomSize);
+                  baseDb.put(base);
+                }}
               >
-                <div
-                  className="labeled-element"
-                >
-                  <label htmlFor={`room-${r}-name`}>Room Name</label>
-                  <input
-                    // disabled={isOptimizing}
-                    id={`room-${r}-name`}
-                    onChange={(event) => {
-                      const newRoomName = event.target.value;
-                      try {
-                        base.setRoomName(r, newRoomName);
-                        // Update the affected links.
-                        const affectedLinks = base.status.links
-                          .map((baseStatusLink) => linkDb.get(baseStatusLink.id))
-                          .filter((link) => link.status.roomIds[0] === room.id || link.status.roomIds[1] === room.id);
-                        for (const affectedLink of affectedLinks) {
-                          const baseLinkIndex = base.status.links.findIndex((link) => link.id === affectedLink.id);
-                          const room0IsAffected = affectedLink.status.roomIds[0] === room.id;
-                          const room1IsAffected = affectedLink.status.roomIds[1] === room.id;
-                          base.spec.links[baseLinkIndex].roomNames = {
-                            0: room0IsAffected ? newRoomName : base.spec.links[baseLinkIndex].roomNames[0],
-                            1: room1IsAffected ? newRoomName : base.spec.links[baseLinkIndex].roomNames[1],
-                          };
-                        }
-                        baseDb.put(base);
-                      } catch (err) {
-                        console.error(err);
-                        setMessage({
-                          type: MessageType.ERROR,
-                          text: String(err),
-                        });
-                      }
-                    }}
-                    type="text"
-                    value={room.spec.name}
-                  />
-                </div>
-                <div
-                  className="labeled-element"
-                >
-                  <label htmlFor={`room-${r}-size`}>Size</label>
-                  <input
-                    // disabled={isOptimizing}
-                    id={`room-${r}-size`}
-                    min={0}
-                    onChange={(event) => {
-                      const newRoomSize = Number(event.target.value);
-                      if (newRoomSize < Number(event.target.min)) {
-                        setMessage({
-                          type: MessageType.ERROR,
-                          text: `The room size ${newRoomSize} is too small.`,
-                        });
-                        return;
-                      }
-                      try {
-                        base.setRoomSize(r, newRoomSize);
-                        baseDb.put(base);
-                      } catch (err) {
-                        console.error(err);
-                        setMessage({
-                          type: MessageType.ERROR,
-                          text: String(err),
-                        });
-                      }
-                    }}
-                    type="number"
-                    value={room.spec.size}
-                  />
-                </div>
-                <div
-                  className="labeled-element"
-                >
-                  <label htmlFor={`room-${r}-color`}>Color</label>
-                  <input
-                    // disabled={isOptimizing}
-                    id={`room-${r}-color`}
-                    onChange={(event) => {
-                      const newRoomColor = event.target.value;
-                      try {
-                        base.setRoomColor(r, newRoomColor);
-                        baseDb.put(base);
-                      } catch (err) {
-                        console.error(err);
-                        setMessage({
-                          type: MessageType.ERROR,
-                          text: String(err),
-                        });
-                      }
-                    }}
-                    type="color"
-                    value={room.spec.color}
-                  />
-                </div>
-                <div
-                  className="labeled-element"
-                >
-                  <label htmlFor={`room-${r}-links`}>Links</label>
-                  {
-                    (() => {
-                      const currentLinks = base.status.links
-                        .map((baseStatusLink) => baseStatusLink.id)
-                        .map((linkId) => linkDb.get(linkId))
-                        .filter((link) => link.status.roomIds[0] === room.id || link.status.roomIds[1] === room.id)
-                      const currentlyLinkedRooms = currentLinks
-                        .map((link) => link.status.roomIds[0] === room.id ? link.status.roomIds[1] : link.status.roomIds[0])
-                        .map((otherRoomId) => roomDb.get(otherRoomId));
-                      const linkableRooms = base.status.rooms
-                        .map((baseStatusRoom) => baseStatusRoom.id)
-                        .filter((roomId) => !currentlyLinkedRooms.map((room) => room.id).includes(roomId))
-                        .filter((unlinkedRoomId) => unlinkedRoomId !== room.id)
-                        .map((unlinkedRoomId) => roomDb.get(unlinkedRoomId));
-                      return (
-                        <div
-                          id={`room-${r}-links`}
-                          style={{
-                            paddingLeft: "1vmin",
-                            paddingTop: "1vmin",
-                          }}
-                        >
-                          {
-                            currentLinks.map((link, linkIndex) => {
-                              const linkedRoomId = link.status.roomIds[0] === room.id ? link.status.roomIds[1] : link.status.roomIds[0];
-                              const linkedRoom = roomDb.get(linkedRoomId);
-                              return (
-                                <div
-                                  className="flexbox-row"
-                                  key={`room-${r}-link-${linkIndex}`}
-                                >
-                                  <div
-                                    className="labeled-element"
-                                  >
-                                    <label htmlFor={`room-${r}-link-${linkIndex}`}>Other Room Name</label>
-                                    <select
-                                      // disabled={isOptimizing}
-                                      id={`room-${r}-link-${linkIndex}`}
-                                      onChange={(event) => {
-                                        const newLinkedRoomName = event.target.value;
-                                        try {
-                                          const linkIndexInBaseSpec = base.status.links.findIndex((baseStatusLink) => baseStatusLink.id === link.id);
-                                          // The ternaries below are to avoid swapping rooms 0 and 1 inadvertently.
-                                          // We just want to update the one room that has changed.
-                                          base.setLinkRoomNames(linkIndexInBaseSpec, {
-                                            0: link.spec.roomNames[0] === room.spec.name ? link.spec.roomNames[0] : newLinkedRoomName,
-                                            1: link.spec.roomNames[1] === room.spec.name ? link.spec.roomNames[1] : newLinkedRoomName,
-                                          });
-                                          baseDb.put(base);
-                                        } catch (err) {
-                                          console.error(err);
-                                          setMessage({
-                                            type: MessageType.ERROR,
-                                            text: String(err),
-                                          });
-                                        }
-                                      }}
-                                      value={linkedRoom.spec.name}
-                                    >
-                                      {
-                                        // This list must also include the currently linked room,
-                                        // or it won't display as the dropdown's current value.
-                                        [
-                                          linkedRoom,
-                                          ...linkableRooms,
-                                        ]
-                                          .map((room) => room.spec.name)
-                                          .sort((a, b) => a > b ? 1 : -1)
-                                          .map((linkableRoomName, linkableRoomIndex) => (
-                                            <option
-                                              value={linkableRoomName}
-                                              key={`room-${r}-link-${linkIndex}-linkable-room-${linkableRoomIndex}`}
-                                            >
-                                              {linkableRoomName}
-                                            </option>
-                                          ))
-                                      }
-                                    </select>
-                                  </div>
-                                  <div
-                                    className="labeled-element"
-                                  >
-                                    <label htmlFor="link-delete">Delete Link</label>
-                                    <button
-                                      id="link-delete"
-                                      onClick={() => {
-                                        try {
-                                          base.deleteLink(linkIndex);
-                                          baseDb.put(base);
-                                        } catch (err) {
-                                          console.error(err);
-                                          setMessage({
-                                            type: MessageType.ERROR,
-                                            text: String(err),
-                                          });
-                                        }
-                                      }}
-                                    >
-                                      -
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })
-                          }
-                          <div
-                            className="labeled-element"
-                          >
-                            <label htmlFor="link-add">Add Link</label>
-                            <button
-                              disabled={linkableRooms.length <= 0}
-                              id="link-add"
-                              onClick={() => {
-                                const otherRoomName = linkableRooms[0].spec.name;
-                                try {
-                                  base.addLink({
-                                    0: room.spec.name,
-                                    1: otherRoomName,
+                {
+                  (() => {
+                    const currentLinks = base.status.links
+                      .map((baseStatusLink) => baseStatusLink.id)
+                      .map((linkId) => linkDb.get(linkId))
+                      .filter((link) => link.status.roomIds[0] === room.id || link.status.roomIds[1] === room.id)
+                    const currentlyLinkedRooms = currentLinks
+                      .map((link) => link.status.roomIds[0] === room.id ? link.status.roomIds[1] : link.status.roomIds[0])
+                      .map((otherRoomId) => roomDb.get(otherRoomId));
+                    const linkableRooms = base.status.rooms
+                      .map((baseStatusRoom) => baseStatusRoom.id)
+                      .filter((roomId) => !currentlyLinkedRooms.map((room) => room.id).includes(roomId))
+                      .filter((unlinkedRoomId) => unlinkedRoomId !== room.id)
+                      .map((unlinkedRoomId) => roomDb.get(unlinkedRoomId));
+                    return (
+                      <div
+                        id={`room-${r}-links`}
+                        style={{
+                          paddingLeft: "1vmin",
+                          paddingTop: "1vmin",
+                        }}
+                      >
+                        {
+                          currentLinks.map((link, linkIndex) => {
+                            const linkedRoomId = link.status.roomIds[0] === room.id ? link.status.roomIds[1] : link.status.roomIds[0];
+                            const linkedRoom = roomDb.get(linkedRoomId);
+                            return (
+                              <LinkView
+                                deleteLink={() => {
+                                  base.deleteLink(linkIndex);
+                                  baseDb.put(base);
+                                }}
+                                key={linkIndex}
+                                linkableRooms={linkableRooms}
+                                linkedRoom={linkedRoom}
+                                linkIndex={linkIndex}
+                                roomIndex={r}
+                                setLinkedRoomName={(newLinkedRoomName: string) => {
+                                  const linkIndexInBaseSpec = base.status.links.findIndex((baseStatusLink) => baseStatusLink.id === link.id);
+                                  // The ternaries below are to avoid swapping rooms 0 and 1 inadvertently.
+                                  // We just want to update the one room that has changed.
+                                  base.setLinkRoomNames(linkIndexInBaseSpec, {
+                                    0: link.spec.roomNames[0] === room.spec.name ? link.spec.roomNames[0] : newLinkedRoomName,
+                                    1: link.spec.roomNames[1] === room.spec.name ? link.spec.roomNames[1] : newLinkedRoomName,
                                   });
                                   baseDb.put(base);
-                                } catch (err) {
-                                  console.error(err);
-                                  setMessage({
-                                    type: MessageType.ERROR,
-                                    text: String(err),
-                                  });
-                                }
-                              }}
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })()
-                  }
-                </div>
-                <div
-                  style={{
-                    alignItems: "flex-end",
-                    display: "flex",
-                    flexDirection: "column",
-                    flexGrow: 1,
-                  }}
-                >
-                  <div
-                    className="labeled-element"
-                  >
-                    <label htmlFor="room-delete">Delete Room</label>
-                    <button
-                      id="room-delete"
-                      onClick={() => {
-                        try {
-                          base.deleteRoom(r);
-                          // Updated affected links.
-                          const affectedLinks = base.status.links
-                            .map((baseStatusLink) => linkDb.get(baseStatusLink.id))
-                            .filter((link) => link.status.roomIds[0] === room.id || link.status.roomIds[1] === room.id);
-                          for (const affectedLink of affectedLinks) {
-                            const baseLinkIndex = base.status.links.findIndex((link) => link.id === affectedLink.id);
-                            base.deleteLink(baseLinkIndex);
-                          }
-                          // Updated affected cells.
-                          base.status.cells
-                            .map((baseStatusCellRow) => baseStatusCellRow.map((baseStatusCell) => cellDb.get(baseStatusCell.id)))
-                            .forEach((cellRow, i) => cellRow.forEach((cell, j) => {
-                              if (cell.status.roomId === room.id) {
-                                delete base.spec.cells[i][j].roomName;
-                              }
-                            }));
-                          baseDb.put(base);
-                        } catch (err) {
-                          console.error(err);
-                          setMessage({
-                            type: MessageType.ERROR,
-                            text: String(err),
-                          });
+                                }}
+                                setMessage={setMessage}
+                              >
+                              </LinkView>
+                            );
+                          })
                         }
-                      }}
-                    >
-                      -
-                    </button>
-                  </div>
-                </div>
-              </div>
+                        <div
+                          className="labeled-element"
+                        >
+                          <label htmlFor="link-add">Add Link</label>
+                          <button
+                            disabled={linkableRooms.length <= 0}
+                            id="link-add"
+                            onClick={() => {
+                              const otherRoomName = linkableRooms[0].spec.name;
+                              try {
+                                base.addLink({
+                                  0: room.spec.name,
+                                  1: otherRoomName,
+                                });
+                                baseDb.put(base);
+                              } catch (err) {
+                                console.error(err);
+                                setMessage({
+                                  type: MessageType.ERROR,
+                                  text: String(err),
+                                });
+                              }
+                            }}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+              </RoomView>
             ))
         }
         <div
