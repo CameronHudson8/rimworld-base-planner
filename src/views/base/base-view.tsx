@@ -294,13 +294,10 @@ export function BaseView(): ReactElement {
               <RoomView
                 deleteRoom={() => {
                   // Delete affected links.
-                  const affectedLinks = base.status.links
+                  base.status.links
                     .map((baseStatusLink) => linkDb.get(baseStatusLink.id))
-                    .filter((link) => link.status.roomIds[0] === room.id || link.status.roomIds[1] === room.id);
-                  for (const affectedLink of affectedLinks) {
-                    const baseLinkIndex = base.status.links.findIndex((link) => link.id === affectedLink.id);
-                    base.deleteLink(baseLinkIndex);
-                  }
+                    .filter((link) => link.status.roomIds[0] === room.id || link.status.roomIds[1] === room.id)
+                    .forEach((link) => base.deleteLink(link.id));
                   // Update affected cells.
                   base.status.cells
                     .map((baseStatusCellRow) => baseStatusCellRow.map((baseStatusCell) => cellDb.get(baseStatusCell.id)))
@@ -372,7 +369,7 @@ export function BaseView(): ReactElement {
                             return (
                               <LinkView
                                 deleteLink={() => {
-                                  base.deleteLink(linkIndex);
+                                  base.deleteLink(link.id);
                                   baseDb.put(base);
                                 }}
                                 key={linkIndex}
