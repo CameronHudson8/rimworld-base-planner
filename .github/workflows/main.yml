@@ -41,7 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: github-pages
-          path: ./build/release.tar.gz
+          path: ./release.tar
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
