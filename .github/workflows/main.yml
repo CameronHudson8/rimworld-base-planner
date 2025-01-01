@@ -1,21 +1,39 @@
 name: main
 on:
-  push: 
+  pull_request:
+    branches:
+      - main
+  push:
     branches:
       - main
 jobs:
-  deploy:
+  buildAndUpload:
     container:
       image: node:20
-    environment:
-      name: github-pages
-      url: ${{ needs.buildAndUpload.outputs.artifactId }}
-    needs: buildAndUpload
     permissions:
       pages: write
-      id-token: write 
+      id-token: write
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Cache local downloads
+        uses: actions/cache@v4
+        with:
+          path: /github/home/.npm
+          key: ${{ runner.os }}-npm-packages
+      - name: Install buildtime dependencies
+        run: npm ci
+      - name: Lint
+        run: npx eslint
+      - name: Test
+        run: npm test
+      - name: Compile
+        run: npm run build
+      - name: Upload static files as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          path: ./build/
       - name: Deploy to GitHub Pages
-        id: deployment
+        if: ${{ github.event_name == 'push' }}
         uses: actions/deploy-pages@v4
