@@ -9,7 +9,8 @@ jobs:
       image: node:20
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ needs.buildAndUpload.outputs.artifactId }}
+    needs: buildAndUpload
     permissions:
       pages: write
       id-token: write 
