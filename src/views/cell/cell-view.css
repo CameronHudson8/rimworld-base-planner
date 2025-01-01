@@ -1,13 +1,14 @@
 .cell {
-  height: 60px;
-  width: 60px;
-  font-size: 0.70em;
+  aspect-ratio: 1.0;
+  padding: 0;
+  max-width: 16vw;
 }
 
-.cell:hover {
-	opacity: 50%;
+.cell select {
+  width: 90%;
+  background-color: inherit;
 }
 
 .cell-unusable {
-	background-color: gray;
+  background-color: gray;
 }

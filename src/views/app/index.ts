@@ -1,14 +1,4 @@
 import './app-view.css';
-import {
-    AppView,
-    AppViewProps,
-    AppViewState,
-} from './app-view';
+import { AppView } from './app-view';
 
-export {
-    AppView,
-};
-export type {
-    AppViewProps,
-    AppViewState,
-};
+export { AppView };

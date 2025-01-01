@@ -2,17 +2,15 @@ name: main
 on:
   pull_request:
     branches:
-      - $default-branch
+      - main
   push: 
     branches:
-      - $default-branch
+      - main
 jobs:
   buildAndUpload:
     container:
       image: node:20
-    defaults:
-      run:
-        working-directory: /root
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,23 +22,28 @@ jobs:
           key: ${{ runner.os }}-npm-packages
       - name: Install buildtime dependencies
         run: npm ci
+      - name: Lint
+        run: npx eslint
+      - name: Test
+        run: npm test
       - name: Compile
-        run: npm build
+        run: npm run build
       - name: Upload static files as artifact
         id: deployment
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build_outputs_folder/
+          path: ./build
   deploy:
     container:
       image: node:20
-    defaults:
-      run:
-        working-directory: /root
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    if: ${{ github.event_name == 'push' || github.event.pull_request.merged == true }}
     needs: buildAndUpload
+    permissions:
+      pages: write
+      id-token: write 
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to GitHub Pages

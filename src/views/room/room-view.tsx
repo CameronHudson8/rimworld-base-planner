@@ -1,15 +1,133 @@
-import { ReactElement } from "react";
+import { Dispatch, ReactElement, SetStateAction } from "react";
+import { RoomData } from "../../models/room";
+import { MessageType } from "../base/base-view";
 
-export type RoomViewProps = {
-  color: string;
-  id: string;
-  links: { name: string }[];
-  name: string;
-  size: number;
+interface RoomViewProps {
+  children: ReactElement,
+  deleteRoom: () => void,
+  room: RoomData,
+  roomIndex: number,
+  setMessage: Dispatch<SetStateAction<{ text: string; type: MessageType; }>>,
+  setRoomColor: (newRoomSize: string) => void;
+  setRoomName: (newRoomName: string) => void;
+  setRoomSize: (newRoomSize: number) => void;
 }
 
-export type RoomViewState = {}
+export function RoomView({ children, deleteRoom, roomIndex, room, setMessage, setRoomColor, setRoomName, setRoomSize }: RoomViewProps): ReactElement {
 
-export function RoomView(props: RoomViewProps): ReactElement {
-  return (<></>);
+  return (
+    <div className="card flexbox-row" >
+      <div className="labeled-element" >
+        <label htmlFor={`room-${roomIndex}-name`}>Room Name</label>
+        <input
+          // disabled={isOptimizing}
+          id={`room-${roomIndex}-name`}
+          onChange={(event) => {
+            const newRoomName = event.target.value;
+            try {
+              setRoomName(newRoomName);
+            } catch (err) {
+              console.error(err);
+              setMessage({
+                type: MessageType.ERROR,
+                text: String(err),
+              });
+            }
+          }}
+          type="text"
+          value={room.spec.name}
+        />
+      </div>
+      <div
+        className="labeled-element"
+      >
+        <label htmlFor={`room-${roomIndex}-size`}>Size</label>
+        <input
+          // disabled={isOptimizing}
+          id={`room-${roomIndex}-size`}
+          min={0}
+          onChange={(event) => {
+            const newRoomSize = Number(event.target.value);
+            if (newRoomSize < Number(event.target.min)) {
+              setMessage({
+                type: MessageType.ERROR,
+                text: `The room size ${newRoomSize} is too small.`,
+              });
+              return;
+            }
+            try {
+              setRoomSize(newRoomSize);
+            } catch (err) {
+              console.error(err);
+              setMessage({
+                type: MessageType.ERROR,
+                text: String(err),
+              });
+            }
+          }}
+          type="number"
+          value={room.spec.size}
+        />
+      </div>
+      <div
+        className="labeled-element"
+      >
+        <label htmlFor={`room-${roomIndex}-color`}>Color</label>
+        <input
+          // disabled={isOptimizing}
+          id={`room-${roomIndex}-color`}
+          onChange={(event) => {
+            const newRoomColor = event.target.value;
+            try {
+              setRoomColor(newRoomColor);
+            } catch (err) {
+              console.error(err);
+              setMessage({
+                type: MessageType.ERROR,
+                text: String(err),
+              });
+            }
+          }}
+          type="color"
+          value={room.spec.color}
+        />
+      </div>
+      <div
+        className="labeled-element"
+      >
+        <label htmlFor={`room-${roomIndex}-links`}>Links</label>
+        {children}
+      </div>
+      <div
+        style={{
+          alignItems: "flex-end",
+          display: "flex",
+          flexDirection: "column",
+          flexGrow: 1,
+        }}
+      >
+        <div
+          className="labeled-element"
+        >
+          <label htmlFor="room-delete">Delete Room</label>
+          <button
+            id="room-delete"
+            onClick={() => {
+              try {
+                deleteRoom();
+              } catch (err) {
+                console.error(err);
+                setMessage({
+                  type: MessageType.ERROR,
+                  text: String(err),
+                });
+              }
+            }}
+          >
+            -
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
