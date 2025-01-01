@@ -1,0 +1,31 @@
+name: pr
+on:
+  pull_request:
+    branches:
+      - main
+jobs:
+  buildAndUpload:
+    container:
+      image: node:20
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Cache local downloads
+        uses: actions/cache@v4
+        with:
+          path: /github/home/.npm
+          key: ${{ runner.os }}-npm-packages
+      - name: Install buildtime dependencies
+        run: npm ci
+      - name: Lint
+        run: npx eslint
+      - name: Test
+        run: npm test
+      - name: Compile
+        run: npm run build
+      - name: Upload static files as artifact
+        id: deployment
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./build
