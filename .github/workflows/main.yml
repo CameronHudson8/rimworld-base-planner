@@ -4,7 +4,7 @@ on:
     branches:
       - main
 jobs:
-  buildAndUpload:
+  release:
     container:
       image: node:20
     environment:
@@ -30,13 +30,20 @@ jobs:
         run: npm test
       - name: Compile
         run: npm run build
-      - name: Upload static files as artifact
+      - name: Package
+        run: |
+          tar \
+              -C ./build \
+              -c \
+              -f release.tar \
+              .
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: github-pages-static-content
-          path: ./build/
-      - name: Deploy to GitHub Pages
+          name: github-pages
+          path: ./build/release.tar.gz
+      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
         with:
-          artifact_name: github-pages-static-content
+          artifact_name: github-pages
