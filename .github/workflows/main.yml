@@ -31,11 +31,9 @@ jobs:
       - name: Compile
         run: npm run build
       - name: Upload static files as artifact
-        id: deployment
         uses: actions/upload-artifact@v4
         with:
           path: ./build/
       - name: Deploy to GitHub Pages
-        id: deployment
         if: ${{ github.event_name == 'push' }}
         uses: actions/deploy-pages@v4
