@@ -182,10 +182,14 @@ export class Base implements BaseData {
     return this;
   }
 
-  deleteLink(index: number): Base {
+  deleteLink(linkId: LinkId): Base {
+    const linkIndex = this.status.links.findIndex((baseStatusLink) => baseStatusLink.id === linkId);
+    if (linkIndex < 0) {
+      throw new Error(`Unable to locate the link with id ${linkId}.`);
+    }
     this.spec.links = [
-      ...this.spec.links.slice(0, index),
-      ...this.spec.links.slice(index + 1),
+      ...this.spec.links.slice(0, linkIndex),
+      ...this.spec.links.slice(linkIndex + 1),
     ];
     this.status.state = BaseState.RECONCILING;
     return this;
