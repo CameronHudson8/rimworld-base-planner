@@ -10,6 +10,7 @@ jobs:
   buildAndUpload:
     container:
       image: node:20
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -38,6 +39,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    if: ${{ github.event_name == 'push' || github.event.pull_request.merged == true }}
     needs: buildAndUpload
     permissions:
       pages: write
