@@ -4,7 +4,7 @@ on:
     branches:
       - main
 jobs:
-  buildAndUpload:
+  release:
     container:
       image: node:20
     environment:
@@ -37,12 +37,12 @@ jobs:
               -c \
               -f release.tar \
               .
-      - name: Upload static files as artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: github-pages
           path: ./build/release.tar.gz
-      - name: Deploy to GitHub Pages
+      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
         with:

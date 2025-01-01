@@ -4,7 +4,7 @@ on:
     branches:
       - main
 jobs:
-  buildAndUpload:
+  build:
     container:
       image: node:20
     runs-on: ubuntu-latest
@@ -24,3 +24,10 @@ jobs:
         run: npm test
       - name: Compile
         run: npm run build
+      - name: Package
+        run: |
+          tar \
+              -C ./build \
+              -c \
+              -f release.tar \
+              .
