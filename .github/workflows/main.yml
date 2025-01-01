@@ -2,10 +2,10 @@ name: main
 on:
   pull_request:
     branches:
-      - $default-branch
+      - main
   push: 
     branches:
-      - $default-branch
+      - main
 jobs:
   buildAndUpload:
     container:
@@ -24,13 +24,17 @@ jobs:
           key: ${{ runner.os }}-npm-packages
       - name: Install buildtime dependencies
         run: npm ci
+      - name: Lint
+        run: npx eslint
+      - name: Lint
+        run: npm test
       - name: Compile
-        run: npm build
+        run: npm run build
       - name: Upload static files as artifact
         id: deployment
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build_outputs_folder/
+          path: /root/build
   deploy:
     container:
       image: node:20
