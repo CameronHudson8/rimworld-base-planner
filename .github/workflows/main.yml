@@ -10,9 +10,6 @@ jobs:
   buildAndUpload:
     container:
       image: node:20
-    defaults:
-      run:
-        working-directory: /root
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -38,9 +35,6 @@ jobs:
   deploy:
     container:
       image: node:20
-    defaults:
-      run:
-        working-directory: /root
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
